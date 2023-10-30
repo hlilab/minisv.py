@@ -21,9 +21,12 @@ class GafParser(object):
             for line in fin:
                 read = line.strip().split()
                 parsed_read = AlignedRead(read)
-                large_del = parsed_read.get_deletion_blocks()
-                if large_del:
-                    yield large_del
+                # large_del = parsed_read.get_deletion_blocks()
+                # if large_del:
+                #     yield large_del
+                large_indel = parsed_read.get_indels()
+                if large_indel:
+                    yield large_indel
 
 
 class AlignedRead(object):
@@ -156,3 +159,116 @@ class AlignedRead(object):
             del_blocks = self.extract_graph_path_exact_coordinate(parts)
         return del_blocks
 
+    def convert_type(self):
+        # convert element types
+        for i in range(1, 4):
+            self.read[i] = int(self.read[i])
+        for i in range(6, 12):
+            self.read[i] = int(self.read[i])
+
+    def get_indels(self, min_mapq:int = 5, min_len: int =100, max_cnt: int = 5, min_frac = 0.7, dbg: bool = True) -> list:
+        """Get indels from one aligned long read in GAF or PAF file
+    
+        Update script from https://github.com/lh3/minigraph/blob/master/misc/mgutils-es6.js#L232-L401
+        """
+        cigar_pattern = re.compile(r"(\d+)([=XIDM])")
+        path_seg_pattern = re.compile(r"([><])([^><:\s]+):(\d+)-(\d+)")
+
+        # self.read is t variable in the k8 script above
+        if len(self.read) < 12:
+            return []
+
+        self.convert_type()
+        # low mapping quality
+        if self.mapq < min_mapq:
+            return []
+
+        # mapped fraction is low
+        if self.read[3] - self.read[2] < self.read[1] * min_frac:
+            return []
+
+        cg = self.cigar[5:]
+        cg_segs = cigar_pattern.findall(self.cigar)
+
+        # record cigar indels
+        a = []
+        x = self.path_start
+        for length, op in cg_segs:
+            length = int(length)
+            if length >= min_len:
+                if op == "I":
+                    a.append([x-1, x+1, length])
+                elif op == "D":
+                    a.append([x, x + length, -length])
+            if op in ["M", "D", "=", "X"]:
+                x += length
+
+        # No indel cigar or too many 
+        if len(a) == 0 or len(a) > max_cnt:
+            return []
+        if dbg:
+            print("X0", a)
+            print("X0", self.read)
+
+        # path segments
+        seg = []
+        if re.match(r'[><]', self.path):
+            assert self.strand == '+', "reverse strand on path"
+            y = 0
+            for m in path_seg_pattern.findall(self.path):
+                st, en = int(m[2]), int(m[3])
+                # [path, absolute path start, absolute path end, path orientation, relative seg start, relative seg end]
+                seg.append([m[1], st, en, 1 if m[0] == '>' else -1,
+                            y, y + (en - st)])
+        else:
+            # https://github.com/lh3/miniasm/blob/master/PAF.md
+            # https://github.com/lh3/gfatools/blob/master/doc/rGFA.md
+            # [path, 0, path length, 1, 0, path length]
+            seg.append([self.path, 0, self.read[6], 1, 0, self.read[6]])
+
+        if dbg:
+            print("X1", seg)
+
+        # starts and ends points for the indels on the segments
+        # also record start and end segments index 
+        # these are used to overlap between path segment and indels 
+        sts, ens = [], []
+        for i in range(len(a)):
+            k = 0
+            # segment k relative end <= indel relative start
+            while k < len(seg) and seg[k][5] <= a[i][0]:
+                k += 1
+            if k == len(seg):
+                raise Exception("failed to find start position")
+            # relative distance between indel start and segment start
+            start_l = a[i][0] - seg[k][4]
+            # graph path > or linear genome
+            if seg[k][3] > 0:
+                # [seg index, absolute path start + distance to indel]
+                sts.append([k, seg[k][1] + start_l])
+            # graph path <, ask Heng 
+            else:
+                # [seg index, absolute path end + distance to indel]
+                sts.append([k, seg[k][2] - start_l])
+
+            k = 0
+            # segment k relative end <= indel relative end
+            while k < len(seg) and seg[k][5] <= a[i][1]:
+                k += 1
+            if k == len(seg):
+                raise Exception("failed to find end position")
+            # relative distance between indel end and segment start
+            end_l = a[i][1] - seg[k][4]
+            # graph path > or linear genome
+            if seg[k][3] > 0:
+                # [seg index, absolute path start + distance to indel]
+                ens.append([k, seg[k][1] + end_l])
+            # graph path <, ask Heng 
+            else:
+                ens.append([k, seg[k][2] - end_l])
+
+        for i in range(len(a)):
+            if dbg:
+                print("X2", a[i][0], a[i][1], sts[i][0], ens[i][0])
+        
+        return []

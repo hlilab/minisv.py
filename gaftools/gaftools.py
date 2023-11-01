@@ -3,6 +3,7 @@
 
 import os
 import re
+import gzip
 
 CODE2CIGAR = "MIDNSHP=XB"
 CIGAR2CODE = dict((y, x) for x, y in enumerate(CODE2CIGAR))
@@ -13,20 +14,28 @@ CHROM_PATTERN = r"^chr[0-9XY]{1,2}$"
 class GafParser(object):
     """Gaf file parser 
     """
-    def __init__(self, gaf_path: str):
+    def __init__(self, gaf_path: str, output: str):
         self.gaf_path = gaf_path
+        self.output = output
 
-    def parse_gaf(self):
+    def parse_indel(self):
+        output = gzip.open(f"{self.output}.bed.gz", 'wt')
+
         with open(self.gaf_path) as fin:
             for line in fin:
                 read = line.strip().split()
                 parsed_read = AlignedRead(read)
+
                 # large_del = parsed_read.get_deletion_blocks()
                 # if large_del:
                 #     yield large_del
-                large_indel = parsed_read.get_indels()
-                if large_indel:
-                    yield large_indel
+
+                large_indels = parsed_read.get_indels()
+                if large_indels:
+                    for indel in large_indels:
+                        indel_row_str = '\t'.join(map(str, indel))
+                        output.write(f"{indel_row_str}\n")
+        output.close()
 
 
 class AlignedRead(object):
@@ -166,7 +175,7 @@ class AlignedRead(object):
         for i in range(6, 12):
             self.read[i] = int(self.read[i])
 
-    def get_indels(self, min_mapq:int = 5, min_len: int =100, max_cnt: int = 5, min_frac = 0.7, dbg: bool = True) -> list:
+    def get_indels(self, min_mapq:int = 5, min_len: int =100, max_cnt: int = 5, min_frac = 0.7, dbg: bool = False) -> list:
         """Get indels from one aligned long read in GAF or PAF file
     
         Update script from https://github.com/lh3/minigraph/blob/master/misc/mgutils-es6.js#L232-L401
@@ -197,7 +206,7 @@ class AlignedRead(object):
             length = int(length)
             if length >= min_len:
                 if op == "I":
-                    a.append([x-1, x+1, length])
+                    a.append([x - 1, x + 1, length])
                 elif op == "D":
                     a.append([x, x + length, -length])
             if op in ["M", "D", "=", "X"]:
@@ -220,6 +229,7 @@ class AlignedRead(object):
                 # [path, absolute path start, absolute path end, path orientation, relative seg start, relative seg end]
                 seg.append([m[1], st, en, 1 if m[0] == '>' else -1,
                             y, y + (en - st)])
+                y += en - st
         else:
             # https://github.com/lh3/miniasm/blob/master/PAF.md
             # https://github.com/lh3/gfatools/blob/master/doc/rGFA.md
@@ -248,9 +258,10 @@ class AlignedRead(object):
                 sts.append([k, seg[k][1] + start_l])
             # graph path <, ask Heng 
             else:
-                # [seg index, absolute path end + distance to indel]
+                # [seg index, absolute path end - distance to indel]
                 sts.append([k, seg[k][2] - start_l])
 
+        for i in range(len(a)):
             k = 0
             # segment k relative end <= indel relative end
             while k < len(seg) and seg[k][5] <= a[i][1]:
@@ -267,8 +278,48 @@ class AlignedRead(object):
             else:
                 ens.append([k, seg[k][2] - end_l])
 
+        output_indels = []
         for i in range(len(a)):
             if dbg:
                 print("X2", a[i][0], a[i][1], sts[i][0], ens[i][0])
-        
-        return []
+
+            # indel on the same segment of the path
+            if sts[i][0] == ens[i][0]:
+                s = seg[sts[i][0]]
+                # seg starts with > or linear reference
+                if s[3] > 0: 
+                    strand = self.strand
+                # seg starts with <
+                else:
+                    strand = "-" if self.strand == "+" else "+"
+
+                if sts[i][1] < ens[i][1]:
+                    start = sts[i][1]
+                else:
+                    start = ens[i][1]
+
+                if sts[i][1] > ens[i][1]:
+                    end = sts[i][1]
+                else:
+                    end = ens[i][1]
+
+                output_indels.append([s[0], start, end, self.read[0], self.mapq, strand, a[i][2]])
+            # indel on different segments
+            else:
+                path = []
+                length = 0
+                # iterate through segments
+                # j from indel start seg index to ends seg index
+                for j in range(sts[i][0], ens[i][0]+1):
+                    s = seg[j]
+                    length += s[2] - s[1]
+                    orientation = '>' if s[3] > 0 else '<'
+                    # >chr1:1-2
+                    path.append(orientation + s[0] + f":{s[1]}-{s[2]}")
+
+                # relative seg start
+                off = seg[sts[i][0]][4]
+                # ask Heng, why always "+"
+                # convert back to relative path coordinate
+                output_indels.append(["".join(path), a[i][0] - off, a[i][1] - off, self.read[0], self.mapq, "+", a[i][2]])
+        return output_indels

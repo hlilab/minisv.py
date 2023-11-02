@@ -23,14 +23,23 @@ def cli():
     "-r", "--support_read", required=True, type=int, help="supported read threshold"
 )
 @click.option(
+    "-m", "--mapq", required=True, type=int, help="read mapping quality"
+)
+@click.option(
+    "-l", "--mlen", required=True, type=int, help="min indel length"
+)
+@click.option(
     "-p", "--prefix", required=True, type=str, help="output prefix for table and figure"
 )
-def parse(input: str, support_read:int, prefix: str):
+def parse(input: str, support_read:int, 
+          mapq: int, mlen: int,
+          prefix: str):
     largedel_coords_dict = defaultdict(int)
     print(input)
     print(prefix)
     gaf = GafParser(input, prefix)
-    gaf.parse_indel()
+    gaf.parse_indel(mapq, mlen)
+    gaf.merge_indel(min_cnt=support_read, min_mapq=mapq)
 
     # output = gzip.open(f"{prefix}.bed.gz", 'wt')
 

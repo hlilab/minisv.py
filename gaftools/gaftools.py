@@ -4,6 +4,7 @@
 import os
 import re
 import gzip
+import math
 
 CODE2CIGAR = "MIDNSHP=XB"
 CIGAR2CODE = dict((y, x) for x, y in enumerate(CODE2CIGAR))
@@ -18,24 +19,126 @@ class GafParser(object):
         self.gaf_path = gaf_path
         self.output = output
 
-    def parse_indel(self):
+    def parse_indel(self, min_mapq: int = 5, min_len: int = 100):
         output = gzip.open(f"{self.output}.bed.gz", 'wt')
 
         with open(self.gaf_path) as fin:
             for line in fin:
                 read = line.strip().split()
                 parsed_read = AlignedRead(read)
-
                 # large_del = parsed_read.get_deletion_blocks()
                 # if large_del:
                 #     yield large_del
-
-                large_indels = parsed_read.get_indels()
+                large_indels = parsed_read.get_indels(min_mapq=min_mapq, min_len=min_len)
                 if large_indels:
                     for indel in large_indels:
                         indel_row_str = '\t'.join(map(str, indel))
                         output.write(f"{indel_row_str}\n")
         output.close()
+
+    def merge_indel(self, min_mapq: int = 5, min_cnt: int = 1, win_size: int = 100, max_diff: float = 0.05):
+        merged_output = gzip.open(f"{self.output}_mergedindel.bed.gz", 'wt')
+
+        def print_bed(ctg, t):
+            # t [start, end, ., mapq, ., indel length, [indel length], [mapq], [strandreadname]]
+            n = len(t[6]) # number of reads
+            if n < min_cnt:
+                return
+
+            length, mapq = 0, 0
+            nf, nr = 0, 0
+            for i in range(n):
+                length += t[6][i]
+                mapq += t[7][i]
+                if t[8][i][0] == '+':
+                    nf += 1
+                else:
+                    nr += 1
+            mapq = math.floor(mapq / n + 0.499)
+            if mapq < min_mapq: 
+                return
+
+            length = math.floor(length / n + .499)
+            len_str = f"+{length}" if length > 0 else str(length)
+            output_str = '\t'.join(map(str, [ctg, t[0], t[1], len_str, n, ".", f"mq:i:{mapq}", f"cf:i:{nf}", f"cr:i:{nr}", f"rd:Z:{','.join(t[8])}"]))
+            merged_output.write(f"{output_str}\n")
+
+        # [pathstr, start, end, readname, mapq, strand, indel length]
+        merged_indel_dict = {}
+        with gzip.open(f"{self.output}.bed.gz", 'rt') as indel_read_output:
+            for line in indel_read_output:
+                t = line.strip().split("\t")
+                t[1] = int(t[1])
+                t[2] = int(t[2])
+                t[4] = int(t[4])
+                t[6] = int(t[6])
+                ctg = t.pop(0)
+                if ctg not in merged_indel_dict:
+                    merged_indel_dict[ctg] = []
+                merged_indel_dict[ctg].append(t)
+
+        for ctg in merged_indel_dict:
+            # sort indels by start 
+            merged_indel_dict[ctg].sort(key=lambda x: x[0])
+
+            a = merged_indel_dict[ctg]
+            b = []
+            for i in range(len(a)):
+                # ith indel
+                ai = a[i]
+                print(i)
+
+                while len(b) > 0:
+                    # indel i start position 
+                    # larger than indel end position
+                    if ai[0] - b[0][1] > win_size:
+                        t = b.pop(0)
+                        print_bed(ctg, t)
+                    else:
+                        break
+
+                merge_j = -1
+                # where merge starts
+                for j in range(len(b) - 1, -1, -1):
+                    bj = b[j]
+
+                    if bj[5] * ai[5] <= 0:
+                        # bj and ai are different deletion or insertion
+                        continue
+
+                    # ai and bj indel length
+                    la = ai[5] if ai[5] > 0 else -ai[5]
+                    lb = bj[5] if bj[5] > 0 else -bj[5]
+
+                    diff = la - lb if la > lb else lb - la
+                    max_indel = la if la > lb else lb
+
+                    # two indels are different
+                    if diff > max_indel * max_diff:
+                        continue
+
+                    #indel length
+                    bj[6].append(ai[5])
+                    #mapq
+                    bj[7].append(ai[3])
+                    #read name
+                    bj[8].append(f"{ai[4]}{ai[2]}")
+                    #reassign the end point
+                    bj[1] = bj[1] if bj[1] > ai[1] else ai[1]
+                    merge_j = j
+                    break
+
+                # empty indel b list
+                # initialize with first ai
+                if merge_j < 0:
+                    # ai [start, end, readname, mapq, strand, indel length]
+                    # bj [start, end, ., mapq, ., indel length, [indel length, mapq], [strandreadname]]
+                    b.append([ai[0], ai[1], ".", ai[3], ".", ai[5], [ai[5]], [ai[3]], [f"{ai[4]}{ai[2]}"]])
+            while len(b) > 0:
+                t = b.pop(0)
+                print_bed(ctg, t)
+        merged_output.close()
+        return
 
 
 class AlignedRead(object):

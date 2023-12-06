@@ -1,9 +1,11 @@
 #!/usr/bin/env python
 
-import rich_click as click
-from collections import defaultdict
-from .gaftools import GafParser
 import gzip
+from collections import defaultdict
+
+import rich_click as click
+
+from .gaftools import GafParser
 
 
 @click.group(help="Pangenome SV tool commands")
@@ -22,18 +24,12 @@ def cli():
 @click.option(
     "-r", "--support_read", required=True, type=int, help="supported read threshold"
 )
-@click.option(
-    "-m", "--mapq", required=True, type=int, help="read mapping quality"
-)
-@click.option(
-    "-l", "--mlen", required=True, type=int, help="min indel length"
-)
+@click.option("-m", "--mapq", required=True, type=int, help="read mapping quality")
+@click.option("-l", "--mlen", required=True, type=int, help="min indel length")
 @click.option(
     "-p", "--prefix", required=True, type=str, help="output prefix for table and figure"
 )
-def parse(input: str, support_read:int, 
-          mapq: int, mlen: int,
-          prefix: str):
+def parse(input: str, support_read: int, mapq: int, mlen: int, prefix: str):
     largedel_coords_dict = defaultdict(int)
     print(input)
     print(prefix)

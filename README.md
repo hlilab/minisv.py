@@ -24,4 +24,3 @@ gaftools parse -m 30 -l 100 --input gaf_or_paf -r 3 -p bed_output
 -p bed_output, output bed gzip file for all the merged indel after threshold
 
 ```
-

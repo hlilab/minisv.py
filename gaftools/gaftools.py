@@ -3,7 +3,6 @@
 
 import gzip
 import math
-import os
 import re
 
 
@@ -241,7 +240,6 @@ class AlignedRead(object):
         if self.read[3] - self.read[2] < self.read[1] * min_frac:
             return []
 
-        cg = self.cigar[5:]
         cg_segs = cigar_pattern.findall(self.cigar)
 
         # record cigar indels

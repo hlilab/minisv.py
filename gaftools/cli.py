@@ -1,8 +1,5 @@
 #!/usr/bin/env python
 
-import gzip
-from collections import defaultdict
-
 import rich_click as click
 
 from .gaftools import GafParser
@@ -30,7 +27,6 @@ def cli():
     "-p", "--prefix", required=True, type=str, help="output prefix for table and figure"
 )
 def parse(input: str, support_read: int, mapq: int, mlen: int, prefix: str):
-    largedel_coords_dict = defaultdict(int)
     print(input)
     print(prefix)
     gaf = GafParser(input, prefix)

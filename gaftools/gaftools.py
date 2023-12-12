@@ -6,6 +6,14 @@ import math
 import re
 
 
+class StartPosException(Exception):
+    pass
+
+
+class EndPosException(Exception):
+    pass
+
+
 class GafParser(object):
     """Gaf file parser"""
 
@@ -13,18 +21,17 @@ class GafParser(object):
         self.gaf_path = gaf_path
         self.output = output
 
-    def parse_indel(self, min_mapq: int = 5, min_len: int = 100):
+    def parse_indel(
+        self, min_mapq: int = 5, min_len: int = 100, verbose: bool = False
+    ) -> None:
         output = gzip.open(f"{self.output}.bed.gz", "wt")
 
         with open(self.gaf_path) as fin:
             for line in fin:
                 read = line.strip().split()
                 parsed_read = AlignedRead(read)
-                # large_del = parsed_read.get_deletion_blocks()
-                # if large_del:
-                #     yield large_del
                 large_indels = parsed_read.get_indels(
-                    min_mapq=min_mapq, min_len=min_len
+                    min_mapq=min_mapq, min_len=min_len, dbg=verbose
                 )
                 if large_indels:
                     for indel in large_indels:
@@ -98,6 +105,7 @@ class GafParser(object):
         for ctg in merged_indel_dict:
             # sort indels by start
             merged_indel_dict[ctg].sort(key=lambda x: x[0])
+            # key: contig, value: [start, end, readname, mapq, strand, indel length]
 
             a = merged_indel_dict[ctg]
             b = []
@@ -120,7 +128,7 @@ class GafParser(object):
                     bj = b[j]
 
                     if bj[5] * ai[5] <= 0:
-                        # bj and ai are different deletion or insertion
+                        # bj and ai are not the same type, deletion or insertion
                         continue
 
                     # ai and bj indel length
@@ -169,6 +177,25 @@ class GafParser(object):
         merged_output.close()
         return
 
+    def parse_tsd(
+        self, min_mapq: int = 5, min_len: int = 100, verbose: bool = False
+    ) -> None:
+        output = gzip.open(f"{self.output}_tsd.bed.gz", "wt")
+
+        with open(self.gaf_path) as fin:
+            for line in fin:
+                read = line.strip().split()
+                parsed_read = AlignedRead(read)
+                large_tsds = parsed_read.get_tsd(
+                    min_mapq=min_mapq, min_len=min_len, dbg=verbose
+                )
+                if large_tsds:
+                    for tsd in large_tsds:
+                        tsd_row_str = "\t".join(map(str, tsd))
+                        output.write(f"{tsd_row_str}\n")
+        output.close()
+        return
+
 
 class AlignedRead(object):
     """Parse one read from the gaf file"""
@@ -194,6 +221,10 @@ class AlignedRead(object):
 
     @property
     def cigar(self):
+        # to be compatible with latest minigraph
+        # https://github.com/lh3/minigraph/commit/54c74fc76b8b946e74aa6f44b559503b5821f12d
+        if "ds:Z" in self.read[-1]:
+            return self.read[-2]
         return self.read[-1]
 
     @property
@@ -205,7 +236,17 @@ class AlignedRead(object):
     def path_end(self):
         return int(self.read[8])
 
+    @property
+    def ds_Z(self):
+        """Parse the ds:Z: tag"""
+        # to be compatible with latest minigraph
+        # https://github.com/lh3/minigraph/commit/54c74fc76b8b946e74aa6f44b559503b5821f12d
+        if "ds:Z" in self.read[-1]:
+            return self.read[-1]
+        raise Exception("Upgrade your minigraph to 0.20-r572-dirty or later")
+
     def convert_type(self):
+        """Convert coordinate column into integers"""
         # convert element types
         for i in range(1, 4):
             self.read[i] = int(self.read[i])
@@ -227,7 +268,7 @@ class AlignedRead(object):
         cigar_pattern = re.compile(r"(\d+)([=XIDM])")
         path_seg_pattern = re.compile(r"([><])([^><:\s]+):(\d+)-(\d+)")
 
-        # self.read is t variable in the k8 script above
+        # at least 12 columns for one read
         if len(self.read) < 12:
             return []
 
@@ -247,6 +288,8 @@ class AlignedRead(object):
         x = self.path_start
         for length, op in cg_segs:
             length = int(length)
+            if dbg:
+                print("X0", x, length, op)
             if length >= min_len:
                 if op == "I":
                     a.append([x - 1, x + 1, length])
@@ -255,12 +298,14 @@ class AlignedRead(object):
             if op in ["M", "D", "=", "X"]:
                 x += length
 
+        if dbg:
+            print("X0", a)
+            print("X0", self.path_start)
+            print("X0", self.cigar, self.read[0])
+
         # No indel cigar or too many
         if len(a) == 0 or len(a) > max_cnt:
             return []
-        if dbg:
-            print("X0", a)
-            print("X0", self.read)
 
         # path segments
         seg = []
@@ -311,6 +356,222 @@ class AlignedRead(object):
                 k += 1
             if k == len(seg):
                 raise Exception("failed to find end position")
+            # relative distance between indel end and segment start
+            end_l = a[i][1] - seg[k][4]
+            # graph path > or linear genome
+            if seg[k][3] > 0:
+                # [seg index, absolute path start + distance to indel]
+                ens.append([k, seg[k][1] + end_l])
+            # graph path <, ask Heng
+            else:
+                ens.append([k, seg[k][2] - end_l])
+
+        output_indels = []
+        for i in range(len(a)):
+            if dbg:
+                print("X2", a[i][0], a[i][1], sts[i][0], ens[i][0])
+
+            # indel on the same segment of the path
+            if sts[i][0] == ens[i][0]:
+                s = seg[sts[i][0]]
+                # seg starts with > or linear reference
+                if s[3] > 0:
+                    strand = self.strand
+                # seg starts with <
+                else:
+                    strand = "-" if self.strand == "+" else "+"
+
+                if sts[i][1] < ens[i][1]:
+                    start = sts[i][1]
+                else:
+                    start = ens[i][1]
+
+                if sts[i][1] > ens[i][1]:
+                    end = sts[i][1]
+                else:
+                    end = ens[i][1]
+
+                output_indels.append(
+                    [s[0], start, end, self.read[0], self.mapq, strand, a[i][2]]
+                )
+            # indel on different segments
+            else:
+                path = []
+                length = 0
+                # iterate through segments
+                # j from indel start seg index to ends seg index
+                for j in range(sts[i][0], ens[i][0] + 1):
+                    s = seg[j]
+                    length += s[2] - s[1]
+                    orientation = ">" if s[3] > 0 else "<"
+                    # >chr1:1-2
+                    path.append(orientation + s[0] + f":{s[1]}-{s[2]}")
+
+                # relative seg start
+                off = seg[sts[i][0]][4]
+                # minigraph always use "+" in genome path
+                # convert back to relative path coordinate
+                output_indels.append(
+                    [
+                        "".join(path),
+                        a[i][0] - off,
+                        a[i][1] - off,
+                        self.read[0],
+                        self.mapq,
+                        "+",
+                        a[i][2],
+                    ]
+                )
+        return output_indels
+
+    def get_tsd(
+        self,
+        min_mapq: int = 5,
+        min_len: int = 100,
+        max_cnt: int = 5,
+        min_frac=0.7,
+        dbg: bool = False,
+    ) -> list:
+        """Get TSD from one aligned long read in GAF or PAF file"""
+        # similar to cs tag
+        # https://github.com/lh3/minimap2#cs
+        # /(:[0-9]+|\*[a-z][a-z]|[=\+\-][A-Za-z]+)+/
+        ds_Z = self.ds_Z[5:]
+        # ds:Z: tag example
+        #      *ag: SNV
+        #      :234: reference bp
+        #      -[gcgccgcgccggcgcaggcgcagagag]: TSD deletion, can be left or right end
+        #      +tggagggactgcccagt: insertion
+        ds_Z_pattern = re.compile(
+            r"(:[0-9]+|\*[a-z][a-z]|[=\+\-]\[?[a-z]+\]?[a-z]*\[?[a-z]+\]?|[=\+\-]\[?[a-z]+\]?[a-z]*)"
+        )
+        path_seg_pattern = re.compile(r"([><])([^><:\s]+):(\d+)-(\d+)")
+
+        assert len(self.read) >= 12, "incomplete GAF file"
+        self.convert_type()
+
+        # low mapping quality
+        if self.mapq < min_mapq:
+            return []
+
+        # mapped fraction is low, default 70%
+        if self.read[3] - self.read[2] < self.read[1] * min_frac:
+            return []
+
+        ds_Z_segs = ds_Z_pattern.findall(ds_Z)
+        # record TSD
+        a = []
+        x = self.path_start
+        if dbg:
+            teststr = ""
+        for ds in ds_Z_segs:
+            if dbg:
+                print("X0", x, ds)
+            if dbg:
+                teststr += ds
+            assert "=" not in ds, "= not expected in ds:Z tag"
+            if ds[0] == "-" or ds[0] == "+":
+                # if '[' in ds: # TSD indel
+                #    print(ds)
+                #    print(re.findall(r"[=\+\-]\[?[a-z]+\]?[a-z]*\[?[a-z]+\]?|[=\+\-]\[?[a-z]+\]?[a-z]"))
+                #    length = len(ds[2:-1])
+                #    op = ds[0]
+                #    if op == "-": # deletion
+                #        x += length
+                #        if length >= min_len:
+                #            a.append([x, x + length, -length])
+                #    if op == "+": # insertion
+                #        if length >= min_len:
+                #            a.append([x - 1, x + 1, length])
+                # example:
+                #      -[gcgccgcgccggcgcaggcgcagagag]: TSD deletion, can be left or right end
+                op = ds[0]
+                indel_sequence = ds.replace("[", "").replace("]", "")[1:]
+                length = len(indel_sequence)
+                if length >= min_len:
+                    if op == "-":  # deletion
+                        a.append([x, x + length, -length])
+                    elif op == "+":  # insertion
+                        a.append([x - 1, x + 1, length])
+                x = x + length if op == "-" else x
+            elif ds.startswith(":"):
+                length = int(ds[1:])
+                x += length
+            elif ds.startswith("*"):
+                assert len(ds) == 3, "only SNV in ds:Z tag"
+                length = 1
+                x += length
+            else:
+                raise Exception("not found ds:Z supported tag")
+
+        if dbg:
+            print("------------")
+            print(self.path_start, ds_Z, ds_Z_segs[:30], self.read[0])
+            assert teststr == ds_Z, "regex miss some part"
+
+        # No indel cigar or too many
+        if len(a) == 0 or len(a) > max_cnt:
+            return []
+        if dbg:
+            print("X0", a)
+
+        # path segments
+        seg = []
+        if re.match(r"[><]", self.path):
+            assert self.strand == "+", "reverse strand on path"
+            y = 0
+            for m in path_seg_pattern.findall(self.path):
+                st, en = int(m[2]), int(m[3])
+                # [path, absolute path start, absolute path end, path orientation, relative seg start, relative seg end]
+                seg.append([m[1], st, en, 1 if m[0] == ">" else -1, y, y + (en - st)])
+                # accumulate seg start
+                y += en - st
+        else:
+            # https://github.com/lh3/miniasm/blob/master/PAF.md
+            # https://github.com/lh3/gfatools/blob/master/doc/rGFA.md
+            # [path, 0, path length, 1, 0, path length]
+            seg.append([self.path, 0, self.read[6], 1, 0, self.read[6]])
+
+        if dbg:
+            print("X1", seg)
+
+        # starts and ends points for the indels on the segments
+        # also record start and end segments index
+        # these are used to overlap between path segment and indels
+        sts, ens = [], []
+        for i in range(len(a)):
+            k = 0
+            # segment k relative end <= indel relative start
+            while k < len(seg) and seg[k][5] <= a[i][0]:
+                k += 1
+            if k == len(seg):
+                try:
+                    raise StartPosException("failed to find start position")
+                except StartPosException:
+                    print("start", k, len(seg), seg, a, self.read[0])
+                    return []
+            # relative distance between indel start and segment start
+            start_l = a[i][0] - seg[k][4]
+            # graph path > or linear genome
+            if seg[k][3] > 0:
+                # [seg index, absolute path start + distance to indel]
+                sts.append([k, seg[k][1] + start_l])
+            # graph path <, ask Heng
+            else:
+                # [seg index, absolute path end - distance to indel]
+                sts.append([k, seg[k][2] - start_l])
+
+        for i in range(len(a)):
+            k = 0
+            # segment k relative end <= indel relative end
+            while k < len(seg) and seg[k][5] <= a[i][1]:
+                k += 1
+            if k == len(seg):
+                try:
+                    raise EndPosException("failed to find end position")
+                except EndPosException:
+                    print("end", k, len(seg), seg, a, self.read[0])
+                    return []
             # relative distance between indel end and segment start
             end_l = a[i][1] - seg[k][4]
             # graph path > or linear genome

@@ -243,7 +243,7 @@ class AlignedRead(object):
         # https://github.com/lh3/minigraph/commit/54c74fc76b8b946e74aa6f44b559503b5821f12d
         if "ds:Z" in self.read[-1]:
             return self.read[-1]
-        raise Exception("Upgrade your minigraph to 0.20-r572-dirty or later")
+        raise Exception("Upgrade your minigraph to 0.20-r574-dirty or later")
 
     def convert_type(self):
         """Convert coordinate column into integers"""
@@ -442,9 +442,7 @@ class AlignedRead(object):
         #      :234: reference bp
         #      -[gcgccgcgccggcgcaggcgcagagag]: TSD deletion, can be left or right end
         #      +tggagggactgcccagt: insertion
-        ds_Z_pattern = re.compile(
-            r"(:[0-9]+|\*[a-z][a-z]|[=\+\-]\[?[a-z]+\]?[a-z]*\[?[a-z]+\]?|[=\+\-]\[?[a-z]+\]?[a-z]*)"
-        )
+        ds_pattern = re.compile(r"(([\+\-\*:])([A-Za-z\[\]0-9]+))")
         path_seg_pattern = re.compile(r"([><])([^><:\s]+):(\d+)-(\d+)")
 
         assert len(self.read) >= 12, "incomplete GAF file"
@@ -458,56 +456,34 @@ class AlignedRead(object):
         if self.read[3] - self.read[2] < self.read[1] * min_frac:
             return []
 
-        ds_Z_segs = ds_Z_pattern.findall(ds_Z)
+        ds_segs_iter = ds_pattern.finditer(ds_Z)
         # record TSD
         a = []
         x = self.path_start
-        if dbg:
-            teststr = ""
-        for ds in ds_Z_segs:
-            if dbg:
-                print("X0", x, ds)
-            if dbg:
-                teststr += ds
-            assert "=" not in ds, "= not expected in ds:Z tag"
-            if ds[0] == "-" or ds[0] == "+":
-                # if '[' in ds: # TSD indel
-                #    print(ds)
-                #    print(re.findall(r"[=\+\-]\[?[a-z]+\]?[a-z]*\[?[a-z]+\]?|[=\+\-]\[?[a-z]+\]?[a-z]"))
-                #    length = len(ds[2:-1])
-                #    op = ds[0]
-                #    if op == "-": # deletion
-                #        x += length
-                #        if length >= min_len:
-                #            a.append([x, x + length, -length])
-                #    if op == "+": # insertion
-                #        if length >= min_len:
-                #            a.append([x - 1, x + 1, length])
-                # example:
-                #      -[gcgccgcgccggcgcaggcgcagagag]: TSD deletion, can be left or right end
-                op = ds[0]
-                indel_sequence = ds.replace("[", "").replace("]", "")[1:]
-                length = len(indel_sequence)
+        for ds in ds_segs_iter:
+            m = ds.groups()
+            op = m[1]
+            ds_str = m[2]
+            seq = re.sub(r"[\]\[]", "", ds_str) if op in ["+", "-"] else ""
+            if op == ":":
+                length = int(ds_str)
+            elif op == "*":
+                length = 1
+            elif op in ["+", "-"]:
+                length = len(seq)
+            else:
+                raise Exception("not found ds:Z supported tag")
+            if op == "-" or op == "+":
                 if length >= min_len:
                     if op == "-":  # deletion
                         a.append([x, x + length, -length])
                     elif op == "+":  # insertion
                         a.append([x - 1, x + 1, length])
-                x = x + length if op == "-" else x
-            elif ds.startswith(":"):
-                length = int(ds[1:])
+            if op == "*" or op == ":" or op == "-":
                 x += length
-            elif ds.startswith("*"):
-                assert len(ds) == 3, "only SNV in ds:Z tag"
-                length = 1
-                x += length
-            else:
-                raise Exception("not found ds:Z supported tag")
 
         if dbg:
-            print("------------")
-            print(self.path_start, ds_Z, ds_Z_segs[:30], self.read[0])
-            assert teststr == ds_Z, "regex miss some part"
+            print(self.path_start, ds_Z, self.read[0])
 
         # No indel cigar or too many
         if len(a) == 0 or len(a) > max_cnt:

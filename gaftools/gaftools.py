@@ -5,6 +5,17 @@ import gzip
 import math
 import re
 
+cigar_pattern = re.compile(r"(\d+)([=XIDM])")
+path_seg_pattern = re.compile(r"([><])([^><:\s]+):(\d+)-(\d+)")
+# ds:Z: tag example
+#      *ag: SNV
+#      :234: reference bp
+#      -[gcgccgcgccggcgcaggcgcagagag]: TSD deletion, can be left or right end
+#      +tggagggactgcccagt: insertion
+ds_pattern = re.compile(r"([\+\-\*:])([A-Za-z\[\]0-9]+)")
+path_seg_pattern = re.compile(r"([><])([^><:\s]+):(\d+)-(\d+)")
+re_tsd = re.compile(r"(\[([A-Za-z]+)\])?([A-Za-z]+)(\[([A-Za-z]+)\])?")
+
 
 class StartPosException(Exception):
     pass
@@ -22,21 +33,22 @@ class GafParser(object):
         self.output = output
 
     def parse_indel(
-        self, min_mapq: int = 5, min_len: int = 100, verbose: bool = False
+        self, min_mapq: int = 5, min_len: int = 100, verbose: bool = False, cpu: int = 1
     ) -> None:
         output = gzip.open(f"{self.output}.bed.gz", "wt")
+        lineno = 0
 
         with open(self.gaf_path) as fin:
             for line in fin:
+                lineno += 1
                 read = line.strip().split()
                 parsed_read = AlignedRead(read)
                 large_indels = parsed_read.get_indels(
-                    min_mapq=min_mapq, min_len=min_len, dbg=verbose
+                    min_mapq=min_mapq, min_len=min_len, dbg=verbose, lineno=lineno
                 )
-                if large_indels:
-                    for indel in large_indels:
-                        indel_row_str = "\t".join(map(str, indel))
-                        output.write(f"{indel_row_str}\n")
+                for indel in large_indels:
+                    indel_row_str = "\t".join(map(str, indel))
+                    output.write(f"{indel_row_str}\n")
         output.close()
 
     def merge_indel(
@@ -180,7 +192,7 @@ class GafParser(object):
     def parse_tsd(
         self, min_mapq: int = 5, min_len: int = 100, verbose: bool = False
     ) -> None:
-        output = gzip.open(f"{self.output}_tsd.bed.gz", "wt")
+        output = open(f"{self.output}_tsd.bed", "w")
 
         with open(self.gaf_path) as fin:
             for line in fin:
@@ -194,7 +206,6 @@ class GafParser(object):
                         tsd_row_str = "\t".join(map(str, tsd))
                         output.write(f"{tsd_row_str}\n")
         output.close()
-        return
 
 
 class AlignedRead(object):
@@ -242,7 +253,7 @@ class AlignedRead(object):
         # to be compatible with latest minigraph
         # https://github.com/lh3/minigraph/commit/54c74fc76b8b946e74aa6f44b559503b5821f12d
         if "ds:Z" in self.read[-1]:
-            return self.read[-1]
+            return self.read[-1][5:]
         raise Exception("Upgrade your minigraph to 0.20-r574-dirty or later")
 
     def convert_type(self):
@@ -255,18 +266,20 @@ class AlignedRead(object):
 
     def get_indels(
         self,
+        lineno: int,
         min_mapq: int = 5,
         min_len: int = 100,
         max_cnt: int = 5,
-        min_frac=0.7,
+        min_frac: float = 0.7,
+        ds: bool = True,
+        polyA_pen: int = 5,
+        polyA_drop: int = 100,
         dbg: bool = False,
     ) -> list:
         """Get indels from one aligned long read in GAF or PAF file
 
         Update script from https://github.com/lh3/minigraph/blob/master/misc/mgutils-es6.js#L232-L401
         """
-        cigar_pattern = re.compile(r"(\d+)([=XIDM])")
-        path_seg_pattern = re.compile(r"([><])([^><:\s]+):(\d+)-(\d+)")
 
         # at least 12 columns for one read
         if len(self.read) < 12:
@@ -292,9 +305,10 @@ class AlignedRead(object):
                 print("X0", x, length, op)
             if length >= min_len:
                 if op == "I":
-                    a.append([x - 1, x + 1, length])
+                    # [start, end, indel length, tsd length, polyA length, tsd seq, indel seq]
+                    a.append([x - 1, x + 1, length, 0, 0, "", ""])
                 elif op == "D":
-                    a.append([x, x + length, -length])
+                    a.append([x, x + length, -length, 0, 0, "", ""])
             if op in ["M", "D", "=", "X"]:
                 x += length
 
@@ -306,6 +320,88 @@ class AlignedRead(object):
         # No indel cigar or too many
         if len(a) == 0 or len(a) > max_cnt:
             return []
+
+        if ds:
+            i = 0  # indel index for one read
+            x = self.path_start
+            ds_Z = self.ds_Z
+            ds_segs_iter = ds_pattern.findall(ds_Z)
+            for op, ds_str in ds_segs_iter:
+                seq = re.sub(r"[\]\[]", "", ds_str) if op in ["+", "-"] else ""
+                if op == ":":
+                    length = int(ds_str)
+                elif op == "*":
+                    length = 1
+                elif op in ["+", "-"]:
+                    length = len(seq)
+                else:
+                    length = -1
+                assert length > 0, "not found ds:Z supported tag"
+                if length >= min_len:
+                    if op == "+":  # insertion
+                        # a: [start, end, indel length, tsd length, polyA length, tsd seq, indel seq]
+                        if a[i][0] != x - 1 or a[i][1] != x + 1 or a[i][2] != length:
+                            raise Exception(
+                                f"CIGAR and ds insertion not consistent line number {lineno}"
+                            )
+                        a[i][5] = ds_str
+                        i += 1
+                    elif op == "-":  # deletion
+                        if a[i][0] != x or a[i][1] != x + length or a[i][2] != -length:
+                            raise Exception(
+                                f"CIGAR and ds deletion not consistent {lineno}"
+                            )
+                        a[i][5] = ds_str
+                        i += 1
+                if op == "*" or op == ":" or op == "-":
+                    x += length
+
+            for i in range(len(a)):
+                # m[0]: [tsd_indel], m[1]: tsd_indel, m[2]: indel, m[3]: [tsd_indel], m[4]: tsd_indel
+                m = re_tsd.search(a[i][5])
+                m = m.groups()
+                if m is None:
+                    raise Exception("Bug!")
+                left_tsd = m[1] if m[1] is not None else ""
+                right_tsd = m[4] if m[4] is not None else ""
+                tsd = right_tsd + left_tsd  # tsd sequences right + left?
+                a[i][3] = len(tsd)
+                a[i][5] = tsd if len(tsd) > 0 else "."
+                internal_seq = m[2]
+                internal_seqlen = len(internal_seq)
+                a[i][6] = internal_seq if internal_seqlen > 0 else "."
+                if internal_seqlen > 0:  # internal insertion larger than 1bp
+                    polyA_len, polyT_len = 0, 0
+                    polyA_max, polyT_max = 0, 0
+                    score, max = 0, 0
+                    max_j = internal_seqlen
+                    for j in range(internal_seqlen - 1, -1, -1):  # 3' -> 5' sense?
+                        if internal_seq[j] in ["A", "a"]:
+                            score += 1
+                        else:
+                            score -= polyA_pen
+                        if score > max:
+                            max = score
+                            max_j = j
+                        elif max - score > polyA_drop:
+                            break
+                    polyA_len = internal_seqlen - max_j
+                    polyA_max = max
+                    score, max = 0, 0
+                    max_j = -1
+                    for j in range(internal_seqlen):  # 5' -> 3' antisense?
+                        if internal_seq[j] in ["T", "t"]:
+                            score += 1
+                        else:
+                            score -= polyA_pen
+                        if score > max:
+                            max = score
+                            max_j = j
+                        elif max - score > polyA_drop:
+                            break
+                    polyT_len = max_j + 1
+                    polyT_max = max
+                    a[i][4] = polyA_len if polyA_max >= polyT_max else -polyT_len
 
         # path segments
         seg = []
@@ -391,8 +487,20 @@ class AlignedRead(object):
                 else:
                     end = ens[i][1]
 
+                # [start, end, indel length, tsd length, polyA length, tsd seq, polyA seq]
                 output_indels.append(
-                    [s[0], start, end, self.read[0], self.mapq, strand, a[i][2]]
+                    [
+                        s[0],
+                        start,
+                        end,
+                        self.read[0],
+                        self.mapq,
+                        strand,
+                        a[i][2],
+                        a[i][3],
+                        a[i][4],
+                        a[i][6],
+                    ]
                 )
             # indel on different segments
             else:
@@ -420,6 +528,9 @@ class AlignedRead(object):
                         self.mapq,
                         "+",
                         a[i][2],
+                        a[i][3],
+                        a[i][4],
+                        a[i][6],
                     ]
                 )
         return output_indels
@@ -436,15 +547,7 @@ class AlignedRead(object):
         # similar to cs tag
         # https://github.com/lh3/minimap2#cs
         # /(:[0-9]+|\*[a-z][a-z]|[=\+\-][A-Za-z]+)+/
-        ds_Z = self.ds_Z[5:]
-        # ds:Z: tag example
-        #      *ag: SNV
-        #      :234: reference bp
-        #      -[gcgccgcgccggcgcaggcgcagagag]: TSD deletion, can be left or right end
-        #      +tggagggactgcccagt: insertion
-        ds_pattern = re.compile(r"(([\+\-\*:])([A-Za-z\[\]0-9]+))")
-        path_seg_pattern = re.compile(r"([><])([^><:\s]+):(\d+)-(\d+)")
-
+        ds_Z = self.ds_Z
         assert len(self.read) >= 12, "incomplete GAF file"
         self.convert_type()
 
@@ -456,14 +559,11 @@ class AlignedRead(object):
         if self.read[3] - self.read[2] < self.read[1] * min_frac:
             return []
 
-        ds_segs_iter = ds_pattern.finditer(ds_Z)
+        ds_segs_iter = ds_pattern.findall(ds_Z)
         # record TSD
         a = []
         x = self.path_start
-        for ds in ds_segs_iter:
-            m = ds.groups()
-            op = m[1]
-            ds_str = m[2]
+        for op, ds_str in ds_segs_iter:
             seq = re.sub(r"[\]\[]", "", ds_str) if op in ["+", "-"] else ""
             if op == ":":
                 length = int(ds_str)

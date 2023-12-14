@@ -34,7 +34,7 @@ def getindel(
     print("get indel...")
     gaf = GafParser(input, prefix)
     gaf.parse_indel(mapq, mlen, verbose)
-    gaf.merge_indel(min_cnt=support_read, min_mapq=mapq)
+    # gaf.merge_indel(min_cnt=support_read, min_mapq=mapq)
 
 
 @cli.command()

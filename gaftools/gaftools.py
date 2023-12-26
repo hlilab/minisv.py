@@ -4,6 +4,7 @@
 import gzip
 import math
 import re
+from multiprocessing import Pool
 
 cigar_pattern = re.compile(r"(\d+)([=XIDM])")
 path_seg_pattern = re.compile(r"([><])([^><:\s]+):(\d+)-(\d+)")
@@ -25,6 +26,15 @@ class EndPosException(Exception):
     pass
 
 
+def parse_one_line(line, min_mapq=30, min_len=100, verbose=False, lineno=0):
+    read = line.strip().split()
+    parsed_read = AlignedRead(read)
+    large_indels_one_read = parsed_read.get_indels(
+        min_mapq=min_mapq, min_len=min_len, dbg=verbose, lineno=lineno
+    )
+    return large_indels_one_read
+
+
 class GafParser(object):
     """Gaf file parser"""
 
@@ -33,22 +43,35 @@ class GafParser(object):
         self.output = output
 
     def parse_indel(
-        self, min_mapq: int = 5, min_len: int = 100, verbose: bool = False, cpu: int = 1
+        self,
+        min_mapq: int = 5,
+        min_len: int = 100,
+        verbose: bool = False,
+        n_cpus: int = 4,
     ) -> None:
-        output = gzip.open(f"{self.output}.bed.gz", "wt")
         lineno = 0
-
+        output = gzip.open(f"{self.output}.bed.gz", "wt")
         with open(self.gaf_path) as fin:
-            for line in fin:
-                lineno += 1
-                read = line.strip().split()
-                parsed_read = AlignedRead(read)
-                large_indels = parsed_read.get_indels(
-                    min_mapq=min_mapq, min_len=min_len, dbg=verbose, lineno=lineno
-                )
-                for indel in large_indels:
-                    indel_row_str = "\t".join(map(str, indel))
-                    output.write(f"{indel_row_str}\n")
+            if n_cpus == 1:
+                for line in fin:
+                    lineno += 1
+                    read = line.strip().split()
+                    parsed_read = AlignedRead(read)
+                    large_indels_one_read = parsed_read.get_indels(
+                        min_mapq=min_mapq, min_len=min_len, dbg=verbose, lineno=lineno
+                    )
+                    for indel in large_indels_one_read:
+                        indel_row_str = "\t".join(map(str, indel))
+                        output.write(f"{indel_row_str}\n")
+            else:
+                with Pool(n_cpus) as pool:
+                    for result in pool.imap(parse_one_line, fin, chunksize=10000):
+                        for indel in result:
+                            # indel_row_str = "\t".join(map(str, indel))
+                            # output.write(f"{indel_row_str}\n")
+                            output.write(
+                                f"{indel[0]}\t{indel[1]}\t{indel[2]}\t{indel[3]}\t{indel[4]}\t{indel[5]}\t{indel[6]}\t{indel[7]}\t{indel[8]}\t{indel[9]}\n"
+                            )
         output.close()
 
     def merge_indel(

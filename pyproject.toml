@@ -4,14 +4,20 @@ version = "0.1.0"
 description = ""
 authors = ["qinqian <qqin@broadinstitute.org>"]
 readme = "README.md"
+#packages = [{ include = "gaftools" }]
+include = [{ path = "gaftools/**/*.so", format = "wheel" }]
+
+[build-system]
+requires = ["poetry-core", "cython"]
+build-backend = "poetry.core.masonry.api"
+
+[tool.poetry.build]
+generate-setup-file = false
+script = "build.py"
 
 [tool.poetry.dependencies]
 python = "^3.10"
 rich-click = "^1.6.1"
-
-[build-system]
-requires = ["poetry-core"]
-build-backend = "poetry.core.masonry.api"
 
 [tool.poetry.scripts]
 gaftools = "gaftools.cli:cli"

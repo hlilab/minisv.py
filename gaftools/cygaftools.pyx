@@ -6,6 +6,8 @@ import math
 import re
 from multiprocessing import Pool
 
+import cython
+
 cigar_pattern = re.compile(r"(\d+)([=XIDM])")
 path_seg_pattern = re.compile(r"([><])([^><:\s]+):(\d+)-(\d+)")
 ds_pattern = re.compile(r"([\+\-\*:])([A-Za-z\[\]0-9]+)")
@@ -31,10 +33,9 @@ def parse_one_line(line, min_mapq=30, min_len=100, verbose=False):
     return large_indels_one_read
 
 
-class GafParser(object):
+class GafParser:
     """Gaf file parser"""
-
-    def __init__(self, gaf_path: str, output: str):
+    def __init__(self, gaf_path, output):
         self.gaf_path = gaf_path
         self.output = output
 
@@ -44,13 +45,18 @@ class GafParser(object):
         min_len: int = 100,
         verbose: bool = False,
         n_cpus: int = 4,
-    ) -> None:
-        lineno = 0
+        ):
+        cdef:
+            str line
+            str indel_row_str
+            list read
+            list large_indels_one_read
+            list indel
+
         output = gzip.open(f"{self.output}.bed.gz", "wt")
         with open(self.gaf_path) as fin:
             if n_cpus == 1:
                 for line in fin:
-                    lineno += 1
                     read = line.strip().split()
                     parsed_read = AlignedRead(read)
                     large_indels_one_read = parsed_read.get_indels(
@@ -63,8 +69,6 @@ class GafParser(object):
                 with Pool(n_cpus) as pool:
                     for result in pool.imap(parse_one_line, fin, chunksize=10000):
                         for indel in result:
-                            # indel_row_str = "\t".join(map(str, indel))
-                            # output.write(f"{indel_row_str}\n")
                             output.write(
                                 f"{indel[0]}\t{indel[1]}\t{indel[2]}\t{indel[3]}\t{indel[4]}\t{indel[5]}\t{indel[6]}\t{indel[7]}\t{indel[8]}\t{indel[9]}\n"
                             )
@@ -245,7 +249,7 @@ cdef class AlignedRead:
         for i in range(6, 12):
             self.read[i] = int(self.read[i])
 
-    cpdef list get_indels(
+    cdef list get_indels(
         self,
         int min_mapq,
         int min_len,
@@ -257,6 +261,21 @@ cdef class AlignedRead:
 
         Update script from https://github.com/lh3/minigraph/blob/master/misc/mgutils-es6.js#L232-L401
         """
+
+        cdef:
+            list cg_segs
+            list ds_segs_iter
+            list a
+            list seg
+            list s
+            list output_indels
+            list sts
+            list ens
+            list path
+            int x, length, y, internal_seqlen, max_j, k
+            int i=0
+            int start_l, end_l, start, end
+            str length_str, op, ds_str, internal_seq, tsd, left_tsd, right_tsd
 
         # at least 12 columns for one read
         if len(self.read) < 12:
@@ -277,8 +296,8 @@ cdef class AlignedRead:
         # record cigar indels
         a = []
         x = self.read[7]
-        for length, op in cg_segs:
-            length = int(length)
+        for length_str, op in cg_segs:
+            length = int(length_str)
             if length >= min_len:
                 if op == "I":
                     # [start, end, indel length, tsd length, polyA length, tsd seq, indel seq]
@@ -292,7 +311,6 @@ cdef class AlignedRead:
         if len(a) == 0 or len(a) > max_cnt:
             return []
 
-        cdef unsigned int i = 0  # indel index for one read
         x = self.read[7]
         ds_Z = self.read[-1][5:]
         ds_segs_iter = ds_pattern.findall(ds_Z)

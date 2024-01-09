@@ -6,7 +6,8 @@
 # Installation
 
 ``` {bash}
-mamba create -n pangenome python==3.10 poetry
+sudo apt install build-essential
+mamba create -n pangenome python==3.10 poetry cython==3.0.7
 conda activate pangenome
 git clone https://github.com/qinqian/gaftools
 cd gaftools
@@ -16,7 +17,7 @@ poetry install
 # Usage
 
 ``` {bash}
-gaftools parse -m 30 -l 100 --input gaf_or_paf -r 3 -p bed_output
+gaftools getindel -m 30 -l 100 --input gaf_or_paf -r 3 -p bed_output
 
 -m mapping quality
 -l large indel size threshold

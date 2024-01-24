@@ -38,8 +38,14 @@ def parse_one_line(line, min_mapq=30, min_len=100, verbose=False, lineno=0):
 class GafParser(object):
     """Gaf file parser"""
 
-    def __init__(self, gaf_path: str, output: str):
-        self.gaf_path = gaf_path
+    def __init__(self, gaf_paths: list[str], output: str):
+        """
+        parameters
+        ------------
+        gaf_paths: a list of gaf files, restricted to tumor[0] and normal[1] pair
+        """
+        self.gaf_paths = gaf_paths
+        assert len(self.gaf_paths) >= 1
         self.output = output
 
     def parse_indel(
@@ -51,27 +57,38 @@ class GafParser(object):
     ) -> None:
         lineno = 0
         output = gzip.open(f"{self.output}.bed.gz", "wt")
-        with open(self.gaf_path) as fin:
-            if n_cpus == 1:
-                for line in fin:
-                    lineno += 1
-                    read = line.strip().split()
-                    parsed_read = AlignedRead(read)
-                    large_indels_one_read = parsed_read.get_indels(
-                        min_mapq=min_mapq, min_len=min_len, dbg=verbose, lineno=lineno
-                    )
-                    for indel in large_indels_one_read:
-                        indel_row_str = "\t".join(map(str, indel))
-                        output.write(f"{indel_row_str}\n")
-            else:
-                with Pool(n_cpus) as pool:
-                    for result in pool.imap(parse_one_line, fin, chunksize=10000):
-                        for indel in result:
-                            # indel_row_str = "\t".join(map(str, indel))
-                            # output.write(f"{indel_row_str}\n")
-                            output.write(
-                                f"{indel[0]}\t{indel[1]}\t{indel[2]}\t{indel[3]}\t{indel[4]}\t{indel[5]}\t{indel[6]}\t{indel[7]}\t{indel[8]}\t{indel[9]}\n"
-                            )
+
+        if len(self.gaf_paths) == 1:
+            read_tags = [""]
+        elif len(self.gaf_paths) == 2:
+            read_tags = ["tumor", "normal"]
+
+        for gaf_path, read_tag in zip(self.gaf_paths, read_tags):
+            with open(gaf_path) as fin:
+                if n_cpus == 1:
+                    for line in fin:
+                        lineno += 1
+                        read = line.strip().split()
+                        parsed_read = AlignedRead(read)
+                        large_indels_one_read = parsed_read.get_indels(
+                            min_mapq=min_mapq,
+                            min_len=min_len,
+                            dbg=verbose,
+                            lineno=lineno,
+                        )
+                        for indel in large_indels_one_read:
+                            indel[3] = f"{read_tag}_{indel[3]}"
+                            indel_row_str = "\t".join(map(str, indel))
+                            output.write(f"{indel_row_str}\n")
+                else:
+                    with Pool(n_cpus) as pool:
+                        for result in pool.imap(parse_one_line, fin, chunksize=10000):
+                            for indel in result:
+                                # indel_row_str = "\t".join(map(str, indel))
+                                # output.write(f"{indel_row_str}\n")
+                                output.write(
+                                    f"{indel[0]}\t{indel[1]}\t{indel[2]}\t{read_tag}_{indel[3]}\t{indel[4]}\t{indel[5]}\t{indel[6]}\t{indel[7]}\t{indel[8]}\t{indel[9]}\n"
+                                )
         output.close()
 
     def bed2vcf(self):

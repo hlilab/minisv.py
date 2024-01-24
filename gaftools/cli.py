@@ -17,7 +17,7 @@ def cli():
     "--input",
     required=True,
     type=click.Path(exists=True),
-    help="input gaf/paf file",
+    help="tumor or normal sample input gaf/paf file, this is required input, if paired normal sample provided, this should be input tumor sample",
 )
 @click.option(
     "-r", "--support_read", required=True, type=int, help="supported read threshold"
@@ -28,6 +28,13 @@ def cli():
 )
 @click.option("-l", "--mlen", required=True, type=int, help="min indel length")
 @click.option(
+    "-n",
+    "--normal",
+    required=False,
+    type=str,
+    help="paired normal sample input gaf/paf file if tumor-only and normal-only mode, skip this option",
+)
+@click.option(
     "-p", "--prefix", required=True, type=str, help="output prefix for table and figure"
 )
 @click.option("-v", "--verbose", is_flag=True, help="verbose option for debug")
@@ -37,14 +44,16 @@ def getindel(
     mapq: int,
     cpu: int,
     mlen: int,
+    normal: str,
     prefix: str,
     verbose: bool,
 ):
     """Get indel reads and merge the microhomology reads into large indels"""
     print("get indel...")
-    gaf = GafParser(input, prefix)
-    gaf.parse_indel(mapq, mlen, verbose, n_cpus=cpu)
-    gaf.merge_indel(min_cnt=support_read, min_mapq=mapq)
+    gafs = GafParser([input, normal], prefix)
+    gafs.parse_indel(mapq, mlen, verbose, n_cpus=cpu)
+
+    gafs.merge_indel(min_cnt=support_read, min_mapq=mapq)
 
 
 @cli.command()
@@ -63,6 +72,9 @@ def getindel(
     "-c", "--cpu", required=True, type=int, default=1, help="read mapping quality"
 )
 @click.option("-l", "--mlen", required=True, type=int, help="min indel length")
+@click.option(
+    "-n", "--normal", required=False, type=str, help="normal pair of gaf/paf file"
+)
 @click.option(
     "-p", "--prefix", required=True, type=str, help="output prefix for table and figure"
 )

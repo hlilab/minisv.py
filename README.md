@@ -1,15 +1,21 @@
 ## <a name ="started"></a>Getting started
 
-### <a name ="docker"></a>Use docker
+### <a name="docker"></a>Use docker
 
 ```sh
 git clone https://github.com/qinqian/gaftools
 cd gaftools && docker build -t gaftools .
 gaf=input_gaf
+normalgaf=normal_gaf
+
+# tumor-only or normal-only mode
 docker run -i -v $(pwd):$(pwd) gaftools gaftools getindel-cython -c 4 -m 30 -l 100 --input $(pwd)/$gaf -r 3 -p $(pwd)/${gaf/.gaf/}_mapq30_mlen100_cnt3
+
+# tumor-normal pair mode
+docker run -i -v $(pwd):$(pwd) gaftools gaftools getindel -c 4 -m 30 -l 100 --input $(pwd)/$gaf --normal $normalgaf -r 3 -p $(pwd)/${gaf/.gaf/}_mapq30_mlen100_cnt3
 ```
 
-### <a name ="ubuntu"></a>Use Ubuntu
+### <a name="ubuntu"></a>Use Ubuntu
 
 ```sh
 sudo apt install build-essential
@@ -18,7 +24,12 @@ conda activate gaftools
 git clone https://github.com/qinqian/gaftools
 cd gaftools && make
 gaf=input_gaf
+normalgaf=normal_gaf
+# tumor-only or normal-only mode
 gaftools getindel-cython -m 30 -l 100 --input $gaf -r 3 -p output_prefix
+
+# tumor-normal pair mode
+docker run -i -v $(pwd):$(pwd) gaftools gaftools getindel -c 4 -m 30 -l 100 --input $(pwd)/$gaf --normal $normalgaf -r 3 -p $(pwd)/${gaf/.gaf/}_mapq30_mlen100_cnt3
 ```
 
 ## <a name="intro"></a>Introduction
@@ -30,11 +41,18 @@ gaftools getindel-cython -m 30 -l 100 --input $gaf -r 3 -p output_prefix
 <!--<img aligh="right" width="278" src="doc/example1.png">-->
 
 - [Getting Started](#started)
-  - [Install with docker][#docker]
-  - [Install with ubuntu][#ubuntu]
+  - [Install with docker](#docker)
+  - [Install with ubuntu](#ubuntu)
 - [Introduction](#intro)
+- [Data preprocessing](#process)
 - [Usage](#usage)
 
+
+## <a name="process"></a>Data preprocessing
+
+### Minigraph
+
+### Minimap2
 
 ## <a name="usage"></a>Usage
 

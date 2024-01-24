@@ -18,6 +18,7 @@ script = "build.py"
 [tool.poetry.dependencies]
 python = "^3.10"
 rich-click = "^1.6.1"
+cyvcf2 = "^0.30.26"
 
 [tool.poetry.scripts]
 gaftools = "gaftools.cli:cli"

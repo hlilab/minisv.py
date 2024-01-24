@@ -26,6 +26,81 @@ files = [
 ]
 
 [[package]]
+name = "coloredlogs"
+version = "15.0.1"
+description = "Colored terminal output for Python's logging module"
+optional = false
+python-versions = ">=2.7, !=3.0.*, !=3.1.*, !=3.2.*, !=3.3.*, !=3.4.*"
+files = [
+    {file = "coloredlogs-15.0.1-py2.py3-none-any.whl", hash = "sha256:612ee75c546f53e92e70049c9dbfcc18c935a2b9a53b66085ce9ef6a6e5c0934"},
+    {file = "coloredlogs-15.0.1.tar.gz", hash = "sha256:7c991aa71a4577af2f82600d8f8f3a89f936baeaf9b50a9c197da014e5bf16b0"},
+]
+
+[package.dependencies]
+humanfriendly = ">=9.1"
+
+[package.extras]
+cron = ["capturer (>=2.4)"]
+
+[[package]]
+name = "cyvcf2"
+version = "0.30.26"
+description = "fast vcf parsing with cython + htslib"
+optional = false
+python-versions = ">=3.7"
+files = [
+    {file = "cyvcf2-0.30.26-cp310-cp310-macosx_10_9_x86_64.whl", hash = "sha256:dad0b3cd79a0f16c7026c934f6f72785be84b86be49c7f33df0b140b76cc4828"},
+    {file = "cyvcf2-0.30.26-cp310-cp310-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:b38ebbac3339a42169dccca5bfd6a7e307cf940dc1ab599dcb500a80a41430aa"},
+    {file = "cyvcf2-0.30.26-cp310-cp310-manylinux_2_28_aarch64.whl", hash = "sha256:b52190887ea8fd91bd48f00d1ec4f888b91def61d4c1bddc75e8a42554fa1c58"},
+    {file = "cyvcf2-0.30.26-cp310-cp310-musllinux_1_2_aarch64.whl", hash = "sha256:6ac8c255ff833f1928a91b97dc2c1f43e5d8ff3b7d8682a01a7caecf01794106"},
+    {file = "cyvcf2-0.30.26-cp310-cp310-musllinux_1_2_x86_64.whl", hash = "sha256:17b03828ef82cd0c14050cb2c140ee011b7a552f3ea72b5d88a1726450f9527f"},
+    {file = "cyvcf2-0.30.26-cp311-cp311-macosx_10_9_x86_64.whl", hash = "sha256:b6090343e15ddbca757682e7f62c507c2358b995275810925a22d67bd082e3f5"},
+    {file = "cyvcf2-0.30.26-cp311-cp311-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:e2a9f7d41311e2689b1ca03552e3214aae41e9e9b44bcca099c938ed661ef139"},
+    {file = "cyvcf2-0.30.26-cp311-cp311-manylinux_2_28_aarch64.whl", hash = "sha256:098d5c22e265c67d668017304145252cea7e6900b1bdb8ab6c401ee2f8e63b21"},
+    {file = "cyvcf2-0.30.26-cp311-cp311-musllinux_1_2_aarch64.whl", hash = "sha256:3ffe3f3b95ff49c58acc02ea4623d87f529de45e91e3f5930de183ebe1b08e10"},
+    {file = "cyvcf2-0.30.26-cp311-cp311-musllinux_1_2_x86_64.whl", hash = "sha256:cf58bfe6e64ab1eda4feaff5f35184cb415a34d9d59ba154a96e4faf302ef22a"},
+    {file = "cyvcf2-0.30.26-cp312-cp312-macosx_10_9_x86_64.whl", hash = "sha256:d522ad8ee542d8190b0843974fe093958bb31d290a355ff0ccdab74865cba367"},
+    {file = "cyvcf2-0.30.26-cp312-cp312-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:af9bc701f50148b4f820aadc11e39f5e3f53e23f486fb58e26a5a2b251883dd0"},
+    {file = "cyvcf2-0.30.26-cp312-cp312-manylinux_2_28_aarch64.whl", hash = "sha256:444c58068ad86f13c9fbb2cb7e9b6f000ac70235c90838ee5990ec69fd6f8b3a"},
+    {file = "cyvcf2-0.30.26-cp312-cp312-musllinux_1_2_aarch64.whl", hash = "sha256:7c913981c13f8a6f2bcff2ccec9720dd452b10c113a231e7670d487d620dd375"},
+    {file = "cyvcf2-0.30.26-cp312-cp312-musllinux_1_2_x86_64.whl", hash = "sha256:cc216fc9d2618ae5fa61621135dca128393ddcacbdde15703642750ee172f839"},
+    {file = "cyvcf2-0.30.26-cp37-cp37m-macosx_10_9_x86_64.whl", hash = "sha256:c5970a1af0ae579671b8d045f0e3e4fa93383041478f61952044104e14de5fca"},
+    {file = "cyvcf2-0.30.26-cp37-cp37m-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:d679df75185a1caccf582f49ba9d567990c21727640b3fed22795928bbe5e9a8"},
+    {file = "cyvcf2-0.30.26-cp37-cp37m-manylinux_2_28_aarch64.whl", hash = "sha256:9fe3f44f7409f72463037c9a43b17ffa562de440c963fec8a5776980cad62ba6"},
+    {file = "cyvcf2-0.30.26-cp38-cp38-macosx_10_9_x86_64.whl", hash = "sha256:bf98a77974e46c3d49f3a1fe5976c4a1d31cc12df20928f84077ac53f1926b13"},
+    {file = "cyvcf2-0.30.26-cp38-cp38-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:99ef07501821a2d62fbe87cf6ebb559eef8eb5cf0df4e1d264790dc9a883f2bf"},
+    {file = "cyvcf2-0.30.26-cp38-cp38-manylinux_2_28_aarch64.whl", hash = "sha256:592f40c945bda2983bd9fc869a1eecebf24f37ae16c1eeb7b6b28b32e3fc79e3"},
+    {file = "cyvcf2-0.30.26-cp39-cp39-macosx_10_9_x86_64.whl", hash = "sha256:75994d63b91b952df3f270029f4dc64f1214ba93855608398275ed40e67ef583"},
+    {file = "cyvcf2-0.30.26-cp39-cp39-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:0c35b5970b32ba44ca20d4fd671f33aef3a6a5c2bfb1116e4dd4a665d8b1c29f"},
+    {file = "cyvcf2-0.30.26-cp39-cp39-manylinux_2_28_aarch64.whl", hash = "sha256:74c4e284600ce402c05c290152d961c254a0054ea705e602c1ddbfcc3cd63aee"},
+    {file = "cyvcf2-0.30.26-cp39-cp39-musllinux_1_2_aarch64.whl", hash = "sha256:8fcd0eb3044c1e545dcfa6ec652d276a0918365c3235f1f3a1b44f6f674eb855"},
+    {file = "cyvcf2-0.30.26-cp39-cp39-musllinux_1_2_x86_64.whl", hash = "sha256:5cbb3806a5ef7c177a0a6001220c2da7c6d1b770a0e1eeccd9bdbe3fe8774e9e"},
+    {file = "cyvcf2-0.30.26-pp310-pypy310_pp73-macosx_10_9_x86_64.whl", hash = "sha256:c999314b37ffe92b06f16c3566bd8cf14afbed3ada2fa88f53d5dfc1a17cfccc"},
+    {file = "cyvcf2-0.30.26-pp310-pypy310_pp73-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:79ae38ca2a2b1447cfec1d95f2b86d734f87a5a11f9dcbda5aa2f2e4893da1f5"},
+    {file = "cyvcf2-0.30.26-pp310-pypy310_pp73-manylinux_2_28_aarch64.whl", hash = "sha256:090ee175caf5bf6623b94d2d34adccbe4c6c02c7e9d4055e6f9a4b6114cd45b9"},
+    {file = "cyvcf2-0.30.26.tar.gz", hash = "sha256:e8473957181ef7b037213d110217046d107cd6a0eb4671f13c47a7a24412db05"},
+]
+
+[package.dependencies]
+click = "*"
+coloredlogs = "*"
+numpy = "*"
+
+[[package]]
+name = "humanfriendly"
+version = "10.0"
+description = "Human friendly output for text interfaces using Python"
+optional = false
+python-versions = ">=2.7, !=3.0.*, !=3.1.*, !=3.2.*, !=3.3.*, !=3.4.*"
+files = [
+    {file = "humanfriendly-10.0-py2.py3-none-any.whl", hash = "sha256:1697e1a8a8f550fd43c2865cd84542fc175a61dcb779b6fee18cf6b6ccba1477"},
+    {file = "humanfriendly-10.0.tar.gz", hash = "sha256:6b0b831ce8f15f7300721aa49829fc4e83921a9a301cc7f606be6686a2288ddc"},
+]
+
+[package.dependencies]
+pyreadline3 = {version = "*", markers = "sys_platform == \"win32\" and python_version >= \"3.8\""}
+
+[[package]]
 name = "markdown-it-py"
 version = "3.0.0"
 description = "Python port of markdown-it. Markdown parsing, done right!"
@@ -61,6 +136,51 @@ files = [
 ]
 
 [[package]]
+name = "numpy"
+version = "1.26.3"
+description = "Fundamental package for array computing in Python"
+optional = false
+python-versions = ">=3.9"
+files = [
+    {file = "numpy-1.26.3-cp310-cp310-macosx_10_9_x86_64.whl", hash = "sha256:806dd64230dbbfaca8a27faa64e2f414bf1c6622ab78cc4264f7f5f028fee3bf"},
+    {file = "numpy-1.26.3-cp310-cp310-macosx_11_0_arm64.whl", hash = "sha256:02f98011ba4ab17f46f80f7f8f1c291ee7d855fcef0a5a98db80767a468c85cd"},
+    {file = "numpy-1.26.3-cp310-cp310-manylinux_2_17_aarch64.manylinux2014_aarch64.whl", hash = "sha256:6d45b3ec2faed4baca41c76617fcdcfa4f684ff7a151ce6fc78ad3b6e85af0a6"},
+    {file = "numpy-1.26.3-cp310-cp310-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:bdd2b45bf079d9ad90377048e2747a0c82351989a2165821f0c96831b4a2a54b"},
+    {file = "numpy-1.26.3-cp310-cp310-musllinux_1_1_aarch64.whl", hash = "sha256:211ddd1e94817ed2d175b60b6374120244a4dd2287f4ece45d49228b4d529178"},
+    {file = "numpy-1.26.3-cp310-cp310-musllinux_1_1_x86_64.whl", hash = "sha256:b1240f767f69d7c4c8a29adde2310b871153df9b26b5cb2b54a561ac85146485"},
+    {file = "numpy-1.26.3-cp310-cp310-win32.whl", hash = "sha256:21a9484e75ad018974a2fdaa216524d64ed4212e418e0a551a2d83403b0531d3"},
+    {file = "numpy-1.26.3-cp310-cp310-win_amd64.whl", hash = "sha256:9e1591f6ae98bcfac2a4bbf9221c0b92ab49762228f38287f6eeb5f3f55905ce"},
+    {file = "numpy-1.26.3-cp311-cp311-macosx_10_9_x86_64.whl", hash = "sha256:b831295e5472954104ecb46cd98c08b98b49c69fdb7040483aff799a755a7374"},
+    {file = "numpy-1.26.3-cp311-cp311-macosx_11_0_arm64.whl", hash = "sha256:9e87562b91f68dd8b1c39149d0323b42e0082db7ddb8e934ab4c292094d575d6"},
+    {file = "numpy-1.26.3-cp311-cp311-manylinux_2_17_aarch64.manylinux2014_aarch64.whl", hash = "sha256:8c66d6fec467e8c0f975818c1796d25c53521124b7cfb760114be0abad53a0a2"},
+    {file = "numpy-1.26.3-cp311-cp311-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:f25e2811a9c932e43943a2615e65fc487a0b6b49218899e62e426e7f0a57eeda"},
+    {file = "numpy-1.26.3-cp311-cp311-musllinux_1_1_aarch64.whl", hash = "sha256:af36e0aa45e25c9f57bf684b1175e59ea05d9a7d3e8e87b7ae1a1da246f2767e"},
+    {file = "numpy-1.26.3-cp311-cp311-musllinux_1_1_x86_64.whl", hash = "sha256:51c7f1b344f302067b02e0f5b5d2daa9ed4a721cf49f070280ac202738ea7f00"},
+    {file = "numpy-1.26.3-cp311-cp311-win32.whl", hash = "sha256:7ca4f24341df071877849eb2034948459ce3a07915c2734f1abb4018d9c49d7b"},
+    {file = "numpy-1.26.3-cp311-cp311-win_amd64.whl", hash = "sha256:39763aee6dfdd4878032361b30b2b12593fb445ddb66bbac802e2113eb8a6ac4"},
+    {file = "numpy-1.26.3-cp312-cp312-macosx_10_9_x86_64.whl", hash = "sha256:a7081fd19a6d573e1a05e600c82a1c421011db7935ed0d5c483e9dd96b99cf13"},
+    {file = "numpy-1.26.3-cp312-cp312-macosx_11_0_arm64.whl", hash = "sha256:12c70ac274b32bc00c7f61b515126c9205323703abb99cd41836e8125ea0043e"},
+    {file = "numpy-1.26.3-cp312-cp312-manylinux_2_17_aarch64.manylinux2014_aarch64.whl", hash = "sha256:7f784e13e598e9594750b2ef6729bcd5a47f6cfe4a12cca13def35e06d8163e3"},
+    {file = "numpy-1.26.3-cp312-cp312-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:5f24750ef94d56ce6e33e4019a8a4d68cfdb1ef661a52cdaee628a56d2437419"},
+    {file = "numpy-1.26.3-cp312-cp312-musllinux_1_1_aarch64.whl", hash = "sha256:77810ef29e0fb1d289d225cabb9ee6cf4d11978a00bb99f7f8ec2132a84e0166"},
+    {file = "numpy-1.26.3-cp312-cp312-musllinux_1_1_x86_64.whl", hash = "sha256:8ed07a90f5450d99dad60d3799f9c03c6566709bd53b497eb9ccad9a55867f36"},
+    {file = "numpy-1.26.3-cp312-cp312-win32.whl", hash = "sha256:f73497e8c38295aaa4741bdfa4fda1a5aedda5473074369eca10626835445511"},
+    {file = "numpy-1.26.3-cp312-cp312-win_amd64.whl", hash = "sha256:da4b0c6c699a0ad73c810736303f7fbae483bcb012e38d7eb06a5e3b432c981b"},
+    {file = "numpy-1.26.3-cp39-cp39-macosx_10_9_x86_64.whl", hash = "sha256:1666f634cb3c80ccbd77ec97bc17337718f56d6658acf5d3b906ca03e90ce87f"},
+    {file = "numpy-1.26.3-cp39-cp39-macosx_11_0_arm64.whl", hash = "sha256:18c3319a7d39b2c6a9e3bb75aab2304ab79a811ac0168a671a62e6346c29b03f"},
+    {file = "numpy-1.26.3-cp39-cp39-manylinux_2_17_aarch64.manylinux2014_aarch64.whl", hash = "sha256:0b7e807d6888da0db6e7e75838444d62495e2b588b99e90dd80c3459594e857b"},
+    {file = "numpy-1.26.3-cp39-cp39-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:b4d362e17bcb0011738c2d83e0a65ea8ce627057b2fdda37678f4374a382a137"},
+    {file = "numpy-1.26.3-cp39-cp39-musllinux_1_1_aarch64.whl", hash = "sha256:b8c275f0ae90069496068c714387b4a0eba5d531aace269559ff2b43655edd58"},
+    {file = "numpy-1.26.3-cp39-cp39-musllinux_1_1_x86_64.whl", hash = "sha256:cc0743f0302b94f397a4a65a660d4cd24267439eb16493fb3caad2e4389bccbb"},
+    {file = "numpy-1.26.3-cp39-cp39-win32.whl", hash = "sha256:9bc6d1a7f8cedd519c4b7b1156d98e051b726bf160715b769106661d567b3f03"},
+    {file = "numpy-1.26.3-cp39-cp39-win_amd64.whl", hash = "sha256:867e3644e208c8922a3be26fc6bbf112a035f50f0a86497f98f228c50c607bb2"},
+    {file = "numpy-1.26.3-pp39-pypy39_pp73-macosx_10_9_x86_64.whl", hash = "sha256:3c67423b3703f8fbd90f5adaa37f85b5794d3366948efe9a5190a5f3a83fc34e"},
+    {file = "numpy-1.26.3-pp39-pypy39_pp73-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:46f47ee566d98849323f01b349d58f2557f02167ee301e5e28809a8c0e27a2d0"},
+    {file = "numpy-1.26.3-pp39-pypy39_pp73-win_amd64.whl", hash = "sha256:a8474703bffc65ca15853d5fd4d06b18138ae90c17c8d12169968e998e448bb5"},
+    {file = "numpy-1.26.3.tar.gz", hash = "sha256:697df43e2b6310ecc9d95f05d5ef20eacc09c7c4ecc9da3f235d39e71b7da1e4"},
+]
+
+[[package]]
 name = "pygments"
 version = "2.16.1"
 description = "Pygments is a syntax highlighting package written in Python."
@@ -73,6 +193,17 @@ files = [
 
 [package.extras]
 plugins = ["importlib-metadata"]
+
+[[package]]
+name = "pyreadline3"
+version = "3.4.1"
+description = "A python implementation of GNU readline."
+optional = false
+python-versions = "*"
+files = [
+    {file = "pyreadline3-3.4.1-py3-none-any.whl", hash = "sha256:b0efb6516fd4fb07b45949053826a62fa4cb353db5be2bbb4a7aa1fdd1e345fb"},
+    {file = "pyreadline3-3.4.1.tar.gz", hash = "sha256:6f3d1f7b8a31ba32b73917cefc1f28cc660562f39aea8646d30bd6eff21f7bae"},
+]
 
 [[package]]
 name = "rich"
@@ -125,4 +256,4 @@ files = [
 [metadata]
 lock-version = "2.0"
 python-versions = "^3.10"
-content-hash = "9734b2658c9690f14766a02930ce10e3fac49accdbeebe96e96962ea8deba9fe"
+content-hash = "625f8a2b11a70913649304a4259d74b2a48bffde477fe558a362be4d893733b6"

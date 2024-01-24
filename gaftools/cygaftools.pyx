@@ -74,36 +74,56 @@ class GafParser:
                             )
         output.close()
 
+    def bed2vcf(self):
+        return
+
     def merge_indel(
         self,
         min_mapq: int = 5,
         min_cnt: int = 1,
         win_size: int = 100,
         max_diff: float = 0.05,
+        is_vcf: bool = True
     ):
-        merged_output = gzip.open(f"{self.output}_mergedindel.bed.gz", "wt")
+        if is_vcf:
+            merged_output = gzip.open(f"{self.output}_mergedindel.vcf.gz", "wt")
+        else:
+            merged_output = gzip.open(f"{self.output}_mergedindel.bed.gz", "wt")
 
         def print_bed(ctg, t):
-            # t [start, end, ., mapq, ., indel length, [indel length], [mapq], [strandreadname]]
-            n = len(t[6])  # number of reads
+            # t is bj below: [start, end, ., mapq, ., indel length, [indel length], [mapq], [tsd length], [polyA length], [indel seq], [strandreadname]]
+            n = len(t[-1])  # number of reads
             if n < min_cnt:
                 return
 
-            length, mapq = 0, 0
+            length, mapq, tsd_length, polyA_length = 0, 0, 0, 0
             nf, nr = 0, 0
             for i in range(n):
                 length += t[6][i]
-                mapq += t[7][i]
-                if t[8][i][0] == "+":
+                mapq   += t[7][i]
+                tsd_length  += t[8][i]
+                polyA_length  += t[9][i]
+
+                # 11th element
+                if t[-1][i][0] == "+":
                     nf += 1
                 else:
                     nr += 1
+            # TODO: calculate concensus sequence in the next version
+            indel_seq = t[10][0]
             mapq = math.floor(mapq / n + 0.499)
             if mapq < min_mapq:
                 return
 
             length = math.floor(length / n + 0.499)
             len_str = f"+{length}" if length > 0 else str(length)
+            tsd_length = math.floor(tsd_length / n + 0.499)
+            # Check if TSD can be deletion
+            tsd_len_str = f"+{tsd_length}" if tsd_length > 0 else str(tsd_length)
+            polyA_length = math.floor(polyA_length / n + 0.499)
+            # Check if polyA can be deletion
+            polyA_len_str = f"+{polyA_length}" if polyA_length > 0 else str(polyA_length)
+
             output_str = "\t".join(
                 map(
                     str,
@@ -111,19 +131,22 @@ class GafParser:
                         ctg,
                         t[0],
                         t[1],
-                        len_str,
+                        len_str,    # average indel length
+                        tsd_len_str, # average tsd length
+                        polyA_length, # average polyA length
+                        indel_seq, # randomly pick one
                         n,
                         ".",
                         f"mq:i:{mapq}",
                         f"cf:i:{nf}",
                         f"cr:i:{nr}",
-                        f"rd:Z:{','.join(t[8])}",
+                        f"rd:Z:{','.join(t[-1])}", # +/-readname
                     ],
                 )
             )
             merged_output.write(f"{output_str}\n")
 
-        # [pathstr, start, end, readname, mapq, strand, indel length]
+        # [path, start, end, read_name, mapq, strand, indel length, tsd length, polyA length, indel seq]
         merged_indel_dict = {}
         with gzip.open(f"{self.output}.bed.gz", "rt") as indel_read_output:
             for line in indel_read_output:
@@ -132,24 +155,27 @@ class GafParser:
                 t[2] = int(t[2])
                 t[4] = int(t[4])
                 t[6] = int(t[6])
+                t[7] = int(t[7])
+                t[8] = int(t[8])
                 ctg = t.pop(0)
                 if ctg not in merged_indel_dict:
                     merged_indel_dict[ctg] = []
                 merged_indel_dict[ctg].append(t)
 
+        # iterate through contig
         for ctg in merged_indel_dict:
             # sort indels by start
             merged_indel_dict[ctg].sort(key=lambda x: x[0])
-            # key: contig, value: [start, end, readname, mapq, strand, indel length]
+            # key: contig, value:[start, end, read_name, mapq, strand, indel length, tsd length, polyA length, indel seq]
 
             a = merged_indel_dict[ctg]
             b = []
             for i in range(len(a)):
-                # ith indel
+                # ith indel or L1
                 ai = a[i]
 
                 while len(b) > 0:
-                    # indel i start position
+                    # indel ai start position
                     # larger than indel end position
                     if ai[0] - b[0][1] > win_size:
                         t = b.pop(0)
@@ -173,7 +199,7 @@ class GafParser:
                     diff = la - lb if la > lb else lb - la
                     max_indel = la if la > lb else lb
 
-                    # two indels are different
+                    # two indels are different skip merge
                     if diff > max_indel * max_diff:
                         continue
 
@@ -181,18 +207,24 @@ class GafParser:
                     bj[6].append(ai[5])
                     # mapq
                     bj[7].append(ai[3])
+                    # tsd length
+                    bj[8].append(ai[6])
+                    # polyA length
+                    bj[9].append(ai[7])
+                    # indel seq
+                    bj[10].append(ai[6])
                     # read name
-                    bj[8].append(f"{ai[4]}{ai[2]}")
+                    bj[11].append(f"{ai[4]}{ai[2]}")
                     # reassign the end point
                     bj[1] = bj[1] if bj[1] > ai[1] else ai[1]
                     merge_j = j
                     break
 
                 # empty indel b list
-                # initialize with first ai
+                # initialize with first ai indel
                 if merge_j < 0:
-                    # ai [start, end, readname, mapq, strand, indel length]
-                    # bj [start, end, ., mapq, ., indel length, [indel length, mapq], [strandreadname]]
+                    # ai: [start, end, read_name, mapq, strand, indel length, tsd length, polyA length, indel seq]
+                    # bj: [start, end, ., mapq, ., indel length, [indel length], [mapq], [tsd length], [polyA length], [indel seq], [strandreadname]]
                     b.append(
                         [
                             ai[0],
@@ -203,6 +235,9 @@ class GafParser:
                             ai[5],
                             [ai[5]],
                             [ai[3]],
+                            [ai[6]],
+                            [ai[7]],
+                            [ai[8]],
                             [f"{ai[4]}{ai[2]}"],
                         ]
                     )
@@ -210,7 +245,6 @@ class GafParser:
                 t = b.pop(0)
                 print_bed(ctg, t)
         merged_output.close()
-        return
 
     def parse_tsd(
         self, min_mapq: int = 5, min_len: int = 100, verbose: bool = False
@@ -344,7 +378,10 @@ cdef class AlignedRead:
                 raise Exception("Bug!")
             left_tsd = m[1] if m[1] is not None else ""
             right_tsd = m[4] if m[4] is not None else ""
-            tsd = right_tsd + left_tsd  # tsd sequences right + left?
+            # NOTE: insertion TSD direction is reverse to genome position
+            # Due to the aligner design
+            # We use the genome sequences right+left tsd to represent the insertion
+            tsd = right_tsd + left_tsd
             a[i][3] = len(tsd)
             a[i][5] = tsd if len(tsd) > 0 else "."
             internal_seq = m[2]

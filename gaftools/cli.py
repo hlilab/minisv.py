@@ -1,5 +1,7 @@
 #!/usr/bin/env python
 
+import sys
+
 import rich_click as click
 
 from .cygaftools import GafParser as cy_GafParser
@@ -50,10 +52,12 @@ def getindel(
 ):
     """Get indel reads and merge the microhomology reads into large indels"""
     print("get indel...")
+    command = " ".join(sys.argv)
+    print(command)
     gafs = GafParser([input, normal], prefix)
-    gafs.parse_indel(mapq, mlen, verbose, n_cpus=cpu)
-
-    gafs.merge_indel(min_cnt=support_read, min_mapq=mapq)
+    # gafs.parse_indel(mapq, mlen, verbose, n_cpus=cpu)
+    # gafs.merge_indel(min_cnt=support_read, min_mapq=mapq)
+    gafs.bed2vcf(command=command)
 
 
 @cli.command()

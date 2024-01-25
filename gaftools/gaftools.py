@@ -4,6 +4,7 @@
 import gzip
 import math
 import re
+from datetime import datetime
 from multiprocessing import Pool
 
 cigar_pattern = re.compile(r"(\d+)([=XIDM])")
@@ -91,8 +92,93 @@ class GafParser(object):
                                 )
         output.close()
 
-    def bed2vcf(self):
-        return
+    def bed2vcf(self, command: str = ""):
+        """Convert merged indel bed file to a vcf file and index by bgzip and tabix"""
+        current_time = datetime.now()
+        formatted_time = current_time.strftime("%Y-%m-%d %H:%M:%S")
+
+        vcf_output = open(f"{self.output}_mergedindel.vcf", "w")
+        # refer to severus and sniffle2
+        hdr = ["##fileformat=VCFv4.2"]
+        hdr.append("##source=gaftools1.0")
+        hdr.append(f'##command="{command}"')
+        hdr.append(f'##fileDate="{formatted_time}"')
+        hdr.append(
+            """##ALT=<ID=INS,Description="Insertion">
+##ALT=<ID=DEL,Description="Deletion">
+##ALT=<ID=BND,Description="Breakend; Translocation">"""
+        )
+        hdr.append('##FILTER=<ID=PASS,Description="All filters passed">')
+        hdr.append(
+            """##INFO=<ID=PRECISE,Number=0,Type=Flag,Description="SV with precise breakpoints coordinates and length">
+##INFO=<ID=IMPRECISE,Number=0,Type=Flag,Description="SV with imprecise breakpoints coordinates and length">
+##INFO=<ID=SVTYPE,Number=1,Type=String,Description="Type of structural variant">
+##INFO=<ID=SVLEN,Number=1,Type=Integer,Description="Length of the SV">
+##INFO=<ID=TSDLEN,Number=1,Type=Integer,Description="Length of the SV">
+##INFO=<ID=POLYALEN,Number=1,Type=Integer,Description="Length of the SV">
+##INFO=<ID=STRANDS,Number=1,Type=String,Description="Breakpoint strandedness">
+##INFO=<ID=DETAILED_TYPE,Number=1,Type=Integer,Description="Detailed type of the SV">
+##INFO=<ID=MAPQ,Number=1,Type=Integer,Description="Median mapping quality of supporting reads">
+##INFO=<ID=SUPPREAD,Number=1,Type=Integer,Description="Number of supporting reads">
+##FORMAT=<ID=GT,Number=1,Type=String,Description="Genotype">
+##FORMAT=<ID=GQ,Number=1,Type=Integer,Description="Genotyping quality">
+##FORMAT=<ID=DR,Number=1,Type=Integer,Description="Number of reference reads">
+##FORMAT=<ID=DV,Number=1,Type=Integer,Description="Number of variant reads">
+##FORMAT=<ID=VAF,Number=1,Type=Float,Description="Variant allele frequency">"""
+        )
+
+        for h in hdr:
+            vcf_output.write(f"{h}\n")
+        # if len(self.gaf_paths) > 1:
+        #     samples_header = list(map(lambda x: os.path.basename(x).replace(".gaf", ""), self.gaf_paths))
+        # else:
+        samples_header = ["SAMPLE"]
+        columns = [
+            "#CHROM",
+            "POS",
+            "ID",
+            "REF",
+            "ALT",
+            "QUAL",
+            "FILTER",
+            "INFO",
+            "FORMAT",
+        ] + samples_header
+        columns_str = "\t".join(columns)
+        vcf_output.write(f"{columns_str}\n")
+
+        # merged indel bed column names
+        # [ctg, start, end, len_str,  # average indel length
+        #  tsd_len_str,  # average tsd length
+        #  polyA_len_str,  # average polyA length
+        #  indel_seq,  # randomly pick one
+        #  n, ".", f"mq:i:{mapq}", f"cf:i:{nf}", f"cr:i:{nr}", f"rd:Z:+/-readname"]
+        with gzip.open(f"{self.output}_mergedindel.bed.gz", "rt") as merge_indel_file:
+            indel_num = 0
+            for line in merge_indel_file:
+                line = line.strip().split("\t")
+                if not re.match(r"[><HGN]", line[0]):
+                    pos = (int(line[1]) + int(line[2])) // 2
+                    type = "INS" if int(line[3]) > 0 else "DEL"
+                    # NOTE: shall we uppercase this base pair
+                    # QUAL is assigned to . now, not sure how to compute it without PHRED score in bam since we input GAF/PAF, maybe not necessary for filter
+                    # FILTER is set to PASS since we output only INDEL with supported read >= 3
+                    # SV ID
+                    ALT = line[6].upper() if type == "INS" else "<DEL>"
+                    # Sniffle2 INFO: PRECISE;SVTYPE=INS;SVLEN=76;END=10872;SUPPORT=9;COVERAGE=8,9,9,11,10;STRAND=+-;AF=1.000;STDEV_LEN=8.319;STDEV_POS=4.930;SUPPORT_LONG=0
+                    # Severus INFO: IMPRECISE;SVTYPE=INS;SVLEN=246;CHR2=chr1;END=34802253;DETAILED_TYPE=None;INSLEN=0;MAPQ=60;SUPPREAD=29;HVAF=0.00|0.00|0.50;CLUSTERID=severus_3
+                    # How to tell if detailed type is BFB_foldback
+                    # No need for CHR2 now since no breakpoint added yet
+                    # Not sure how other tool define PRECISE/IMPRECISE
+                    mapq = line[9].replace("mq:i:", "")
+                    reads = line[-1].replace("rd:Z:", "")
+                    # GT:GQ:VAF:DR:DV 0|1:279:0.45:36:29
+                    # Not sure how to decide GT, GQ and VAF, DR yet
+                    vcf_output.write(
+                        f"{line[0]}\t{pos}\tgaftools1.{type}.{indel_num}\tN\t{ALT}\t.\tPASS\tSVTYPE={type};SVLEN={line[3]};TSDLEN={line[4]};POLYALEN={line[5]};DETAILED_TYPE=None;MAPQ={mapq};SUPPREAD={line[7]};READS={reads}\tGT:GQ:VAF:DR:DV\t.:.:.:.:{line[7]}\n"
+                    )
+                    indel_num += 1
+        vcf_output.close()
 
     def merge_indel(
         self,
@@ -100,12 +186,8 @@ class GafParser(object):
         min_cnt: int = 1,
         win_size: int = 100,
         max_diff: float = 0.05,
-        is_vcf: bool = True,
     ):
-        if is_vcf:
-            merged_output = gzip.open(f"{self.output}_mergedindel.vcf.gz", "wt")
-        else:
-            merged_output = gzip.open(f"{self.output}_mergedindel.bed.gz", "wt")
+        merged_output = gzip.open(f"{self.output}_mergedindel.bed.gz", "wt")
 
         def print_bed(ctg, t):
             # t is bj below: [start, end, ., mapq, ., indel length, [indel length], [mapq], [tsd length], [polyA length], [indel seq], [strandreadname]]

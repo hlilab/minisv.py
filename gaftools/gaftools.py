@@ -103,6 +103,34 @@ class GafParser(object):
         hdr.append("##source=gaftools1.0")
         hdr.append(f'##command="{command}"')
         hdr.append(f'##fileDate="{formatted_time}"')
+        # remove lengths for both hg38 and chm13
+        hdr.append(
+            """##contig=<ID=chr1>
+##contig=<ID=chr2>
+##contig=<ID=chr3>
+##contig=<ID=chr4>
+##contig=<ID=chr5>
+##contig=<ID=chr6>
+##contig=<ID=chr7>
+##contig=<ID=chr8>
+##contig=<ID=chr9>
+##contig=<ID=chr10>
+##contig=<ID=chr11>
+##contig=<ID=chr12>
+##contig=<ID=chr13>
+##contig=<ID=chr14>
+##contig=<ID=chr15>
+##contig=<ID=chr16>
+##contig=<ID=chr17>
+##contig=<ID=chr18>
+##contig=<ID=chr19>
+##contig=<ID=chr20>
+##contig=<ID=chr21>
+##contig=<ID=chr22>
+##contig=<ID=chrX>
+##contig=<ID=chrY>
+##contig=<ID=chrM>"""
+        )
         hdr.append(
             """##ALT=<ID=INS,Description="Insertion">
 ##ALT=<ID=DEL,Description="Deletion">
@@ -120,6 +148,7 @@ class GafParser(object):
 ##INFO=<ID=DETAILED_TYPE,Number=1,Type=Integer,Description="Detailed type of the SV">
 ##INFO=<ID=MAPQ,Number=1,Type=Integer,Description="Median mapping quality of supporting reads">
 ##INFO=<ID=SUPPREAD,Number=1,Type=Integer,Description="Number of supporting reads">
+##INFO=<ID=READS,Number=1,Type=Integer,Description="Number of supporting reads">
 ##FORMAT=<ID=GT,Number=1,Type=String,Description="Genotype">
 ##FORMAT=<ID=GQ,Number=1,Type=Integer,Description="Genotyping quality">
 ##FORMAT=<ID=DR,Number=1,Type=Integer,Description="Number of reference reads">
@@ -157,9 +186,13 @@ class GafParser(object):
             indel_num = 0
             for line in merge_indel_file:
                 line = line.strip().split("\t")
-                if not re.match(r"[><HGN]", line[0]):
-                    pos = (int(line[1]) + int(line[2])) // 2
+                if not re.match(r"[><HGN]", line[0]):  # remove non-linear genome
                     type = "INS" if int(line[3]) > 0 else "DEL"
+                    if type == "DEL":  # deletion use the left end
+                        pos = line[1]
+                    else:  # insertion use the middle point
+                        pos = (int(line[1]) + int(line[2])) // 2
+
                     # NOTE: shall we uppercase this base pair
                     # QUAL is assigned to . now, not sure how to compute it without PHRED score in bam since we input GAF/PAF, maybe not necessary for filter
                     # FILTER is set to PASS since we output only INDEL with supported read >= 3

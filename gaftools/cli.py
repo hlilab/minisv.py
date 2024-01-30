@@ -55,8 +55,8 @@ def getindel(
     command = " ".join(sys.argv)
     print(command)
     gafs = GafParser([input, normal], prefix)
-    # gafs.parse_indel(mapq, mlen, verbose, n_cpus=cpu)
-    # gafs.merge_indel(min_cnt=support_read, min_mapq=mapq)
+    gafs.parse_indel(mapq, mlen, verbose, n_cpus=cpu)
+    gafs.merge_indel(min_cnt=support_read, min_mapq=mapq)
     gafs.bed2vcf(command=command)
 
 
@@ -77,7 +77,11 @@ def getindel(
 )
 @click.option("-l", "--mlen", required=True, type=int, help="min indel length")
 @click.option(
-    "-n", "--normal", required=False, type=str, help="normal pair of gaf/paf file"
+    "-n",
+    "--normal",
+    required=False,
+    type=str,
+    help="paired normal sample input gaf/paf file if tumor-only and normal-only mode, skip this option",
 )
 @click.option(
     "-p", "--prefix", required=True, type=str, help="output prefix for table and figure"
@@ -89,14 +93,17 @@ def getindel_cython(
     mapq: int,
     cpu: int,
     mlen: int,
+    normal: str,
     prefix: str,
     verbose: bool,
 ):
     """Get indel reads and merge the microhomology reads into large indels"""
     print("get cython indel...")
-    gaf = cy_GafParser(input, prefix)
-    gaf.parse_indel(mapq, mlen, verbose, n_cpus=cpu)
-    gaf.merge_indel(min_cnt=support_read, min_mapq=mapq)
+    command = " ".join(sys.argv)
+    gafs = cy_GafParser([input, normal], prefix)
+    gafs.parse_indel(mapq, mlen, verbose, n_cpus=cpu)
+    gafs.merge_indel(min_cnt=support_read, min_mapq=mapq)
+    gafs.bed2vcf(command=command)
 
 
 @cli.command()

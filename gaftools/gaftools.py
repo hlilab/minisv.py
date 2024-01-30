@@ -186,7 +186,7 @@ class GafParser(object):
             indel_num = 0
             for line in merge_indel_file:
                 line = line.strip().split("\t")
-                if not re.match(r"[><HGN]", line[0]):  # remove non-linear genome
+                if not (re.match(r"^[><HNC]", line[0]) or "#" in line[0] or "_" in line[0]):  # remove non-linear genome
                     type = "INS" if int(line[3]) > 0 else "DEL"
                     if type == "DEL":  # deletion use the left end
                         pos = line[1]

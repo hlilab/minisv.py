@@ -3,6 +3,9 @@
 
 import gzip
 import math
+import os
+import functools
+
 import re
 from datetime import datetime
 from multiprocessing import Pool
@@ -27,11 +30,12 @@ class EndPosException(Exception):
     pass
 
 
-def parse_one_line(line, min_mapq=30, min_len=100, verbose=False, lineno=0):
+def parse_one_line(line, min_mapq=30, min_len=100, verbose=False, lineno=0, ds=True):
     read = line.strip().split()
     parsed_read = AlignedRead(read)
     large_indels_one_read = parsed_read.get_indels(
-        min_mapq=min_mapq, min_len=min_len, dbg=verbose, lineno=lineno
+        min_mapq=min_mapq, min_len=min_len, dbg=verbose, lineno=lineno,
+        ds=ds
     )
     return large_indels_one_read
 
@@ -55,8 +59,14 @@ class GafParser(object):
         min_len: int = 100,
         verbose: bool = False,
         n_cpus: int = 4,
+        ds: bool = True
     ) -> None:
+        self.ds = ds
+
         lineno = 0
+        if os.path.exists(f"{self.output}.bed.gz"):
+            return
+
         output = gzip.open(f"{self.output}.bed.gz", "wt")
 
         if len(self.gaf_paths) == 1:
@@ -65,6 +75,7 @@ class GafParser(object):
             read_tags = ["tumor", "normal"]
 
         for gaf_path, read_tag in zip(self.gaf_paths, read_tags):
+            print(gaf_path, read_tag)
             with open(gaf_path) as fin:
                 if n_cpus == 1:
                     for line in fin:
@@ -76,6 +87,7 @@ class GafParser(object):
                             min_len=min_len,
                             dbg=verbose,
                             lineno=lineno,
+                            ds=ds
                         )
                         for indel in large_indels_one_read:
                             indel[3] = f"{read_tag}_{indel[3]}"
@@ -83,10 +95,9 @@ class GafParser(object):
                             output.write(f"{indel_row_str}\n")
                 else:
                     with Pool(n_cpus) as pool:
-                        for result in pool.imap(parse_one_line, fin, chunksize=10000):
+                        parser = functools.partial(parse_one_line, ds=ds, min_mapq=min_mapq, min_len=min_len)
+                        for result in pool.imap(parser, fin, chunksize=10000):
                             for indel in result:
-                                # indel_row_str = "\t".join(map(str, indel))
-                                # output.write(f"{indel_row_str}\n")
                                 output.write(
                                     f"{indel[0]}\t{indel[1]}\t{indel[2]}\t{read_tag}_{indel[3]}\t{indel[4]}\t{indel[5]}\t{indel[6]}\t{indel[7]}\t{indel[8]}\t{indel[9]}\n"
                                 )
@@ -148,7 +159,8 @@ class GafParser(object):
 ##INFO=<ID=DETAILED_TYPE,Number=1,Type=Integer,Description="Detailed type of the SV">
 ##INFO=<ID=MAPQ,Number=1,Type=Integer,Description="Median mapping quality of supporting reads">
 ##INFO=<ID=SUPPREAD,Number=1,Type=Integer,Description="Number of supporting reads">
-##INFO=<ID=READS,Number=1,Type=Integer,Description="Number of supporting reads">
+##INFO=<ID=END,Number=1,Type=Integer,Description="End position of the SV">
+##INFO=<ID=RNAMES,Number=.,Type=String,Description="Names of supporting reads">
 ##FORMAT=<ID=GT,Number=1,Type=String,Description="Genotype">
 ##FORMAT=<ID=GQ,Number=1,Type=Integer,Description="Genotyping quality">
 ##FORMAT=<ID=DR,Number=1,Type=Integer,Description="Number of reference reads">
@@ -188,10 +200,8 @@ class GafParser(object):
                 line = line.strip().split("\t")
                 if not (re.match(r"^[><HNC]", line[0]) or "#" in line[0] or "_" in line[0]):  # remove non-linear genome
                     type = "INS" if int(line[3]) > 0 else "DEL"
-                    if type == "DEL":  # deletion use the left end
-                        pos = line[1]
-                    else:  # insertion use the middle point
-                        pos = (int(line[1]) + int(line[2])) // 2
+                    start = int(line[1]) + 1
+                    end = int(line[2])
 
                     # NOTE: shall we uppercase this base pair
                     # QUAL is assigned to . now, not sure how to compute it without PHRED score in bam since we input GAF/PAF, maybe not necessary for filter
@@ -208,7 +218,7 @@ class GafParser(object):
                     # GT:GQ:VAF:DR:DV 0|1:279:0.45:36:29
                     # Not sure how to decide GT, GQ and VAF, DR yet
                     vcf_output.write(
-                        f"{line[0]}\t{pos}\tgaftools1.{type}.{indel_num}\tN\t{ALT}\t.\tPASS\tSVTYPE={type};SVLEN={line[3]};TSDLEN={line[4]};POLYALEN={line[5]};DETAILED_TYPE=None;MAPQ={mapq};SUPPREAD={line[7]};READS={reads}\tGT:GQ:VAF:DR:DV\t.:.:.:.:{line[7]}\n"
+                        f"{line[0]}\t{start}\tgaftools1.{type}.{indel_num}\tN\t{ALT}\t.\tPASS\tEND={end}SVTYPE={type};SVLEN={line[3]};TSDLEN={line[4]};POLYALEN={line[5]};DETAILED_TYPE=None;MAPQ={mapq};SUPPREAD={line[7]};RNAMES={reads}\tGT:GQ:VAF:DR:DV\t.:.:.:.:{line[7]}\n"
                     )
                     indel_num += 1
         vcf_output.close()
@@ -234,8 +244,10 @@ class GafParser(object):
             for i in range(n):
                 length += t[6][i]
                 mapq += t[7][i]
-                tsd_length += t[8][i]
-                polyA_length += t[9][i]
+
+                if self.ds: # gaf file
+                    tsd_length += t[8][i]
+                    polyA_length += t[9][i]
 
                 # 11th element
                 if t[-1][i][0] == "+":
@@ -245,21 +257,29 @@ class GafParser(object):
 
             # pick the first indel sequence for the merged indel
             # TODO: calculate concensus sequence in the next version
-            indel_seq = t[10][0]
+            indel_seq = "N"
+            if self.ds: # gaf file 
+                indel_seq = t[10][0]
+
             mapq = math.floor(mapq / n + 0.499)
             if mapq < min_mapq:
                 return
 
             length = math.floor(length / n + 0.499)
             len_str = f"+{length}" if length > 0 else str(length)
-            tsd_length = math.floor(tsd_length / n + 0.499)
-            # Check if TSD can be deletion
-            tsd_len_str = f"+{tsd_length}" if tsd_length > 0 else str(tsd_length)
-            polyA_length = math.floor(polyA_length / n + 0.499)
-            # Check if polyA can be deletion
-            polyA_len_str = (
-                f"+{polyA_length}" if polyA_length > 0 else str(polyA_length)
-            )
+
+            if self.ds:
+                tsd_length = math.floor(tsd_length / n + 0.499)
+                # Check if TSD can be deletion
+                tsd_len_str = f"+{tsd_length}" if tsd_length > 0 else str(tsd_length)
+                polyA_length = math.floor(polyA_length / n + 0.499)
+                # Check if polyA can be deletion
+                polyA_len_str = (
+                    f"+{polyA_length}" if polyA_length > 0 else str(polyA_length)
+                )
+            else:
+                tsd_len_str = "0"
+                polyA_len_str = "0"
 
             output_str = "\t".join(
                 map(
@@ -349,14 +369,19 @@ class GafParser(object):
                     bj[6].append(ai[5])
                     # mapq
                     bj[7].append(ai[3])
-                    # tsd length
-                    bj[8].append(ai[6])
-                    # polyA length
-                    bj[9].append(ai[7])
-                    # indel seq
-                    bj[10].append(ai[6])
-                    # read name
-                    bj[11].append(f"{ai[4]}{ai[2]}")
+
+                    if self.ds: # gaf file
+                        # tsd length
+                        bj[8].append(ai[6])
+                        # polyA length
+                        bj[9].append(ai[7])
+                        # indel seq
+                        bj[10].append(ai[6])
+                        # read name
+                        bj[11].append(f"{ai[4]}{ai[2]}")
+                    else:
+                        bj[8].append(f"{ai[4]}{ai[2]}")
+
                     # reassign the end point
                     bj[1] = bj[1] if bj[1] > ai[1] else ai[1]
                     merge_j = j
@@ -367,22 +392,41 @@ class GafParser(object):
                 if merge_j < 0:
                     # ai: [start, end, read_name, mapq, strand, indel length, tsd length, polyA length, indel seq]
                     # bj: [start, end, ., mapq, ., indel length, [indel length], [mapq], [tsd length], [polyA length], [indel seq], [strandreadname]]
-                    b.append(
-                        [
-                            ai[0],
-                            ai[1],
-                            ".",
-                            ai[3],
-                            ".",
-                            ai[5],
-                            [ai[5]],
-                            [ai[3]],
-                            [ai[6]],
-                            [ai[7]],
-                            [ai[8]],
-                            [f"{ai[4]}{ai[2]}"],
-                        ]
-                    )
+                    if self.ds: # gaf file with indel seq
+                        b.append(
+                            [
+                                ai[0],
+                                ai[1],
+                                ".",
+                                ai[3],
+                                ".",
+                                ai[5],
+                                [ai[5]],
+                                [ai[3]],
+                                [ai[6]],
+                                [ai[7]],
+                                [ai[8]],
+                                [f"{ai[4]}{ai[2]}"],
+                            ]
+                        )
+                    else: # paf file
+                        # paf output from minimap2 do not have ai[6-8]: tsd, polyA, indel seq yet
+                        # ai [start, end, readname, mapq, strand, indel length]
+                        # bj [start, end, ., mapq, ., indel length, [indel length], [mapq], [strandreadname]]
+                        b.append(
+                            [
+                                ai[0],
+                                ai[1],
+                                ".",
+                                ai[3],
+                                ".",
+                                ai[5],
+                                [ai[5]],
+                                [ai[3]],
+                                [f"{ai[4]}{ai[2]}"],
+                            ]
+                        )
+                    
             # output indel that are skipped in the merging for loop
             while len(b) > 0:
                 t = b.pop(0)

@@ -148,7 +148,8 @@ class GafParser:
 ##INFO=<ID=DETAILED_TYPE,Number=1,Type=Integer,Description="Detailed type of the SV">
 ##INFO=<ID=MAPQ,Number=1,Type=Integer,Description="Median mapping quality of supporting reads">
 ##INFO=<ID=SUPPREAD,Number=1,Type=Integer,Description="Number of supporting reads">
-##INFO=<ID=READS,Number=1,Type=Integer,Description="Number of supporting reads">
+##INFO=<ID=END,Number=1,Type=Integer,Description="End position of the SV">
+##INFO=<ID=RNAMES,Number=.,Type=String,Description="Names of supporting reads">
 ##FORMAT=<ID=GT,Number=1,Type=String,Description="Genotype">
 ##FORMAT=<ID=GQ,Number=1,Type=Integer,Description="Genotyping quality">
 ##FORMAT=<ID=DR,Number=1,Type=Integer,Description="Number of reference reads">
@@ -188,10 +189,8 @@ class GafParser:
                 line = line.strip().split("\t")
                 if not (re.match(r"^[><HNC]", line[0]) or "#" in line[0] or "_" in line[0]):  # remove non-linear genome
                     type = "INS" if int(line[3]) > 0 else "DEL"
-                    if type == "DEL":  # deletion use the left end
-                        pos = line[1]
-                    else:  # insertion use the middle point
-                        pos = (int(line[1]) + int(line[2])) // 2
+                    start = int(line[1]) + 1
+                    end = int(line[2])
 
                     # NOTE: shall we uppercase this base pair
                     # QUAL is assigned to . now, not sure how to compute it without PHRED score in bam since we input GAF/PAF, maybe not necessary for filter
@@ -208,7 +207,7 @@ class GafParser:
                     # GT:GQ:VAF:DR:DV 0|1:279:0.45:36:29
                     # Not sure how to decide GT, GQ and VAF, DR yet
                     vcf_output.write(
-                        f"{line[0]}\t{pos}\tgaftools1.{type}.{indel_num}\tN\t{ALT}\t.\tPASS\tSVTYPE={type};SVLEN={line[3]};TSDLEN={line[4]};POLYALEN={line[5]};DETAILED_TYPE=None;MAPQ={mapq};SUPPREAD={line[7]};READS={reads}\tGT:GQ:VAF:DR:DV\t.:.:.:.:{line[7]}\n"
+                        f"{line[0]}\t{start}\tgaftools1.{type}.{indel_num}\tN\t{ALT}\t.\tPASS\tEND={end}SVTYPE={type};SVLEN={line[3]};TSDLEN={line[4]};POLYALEN={line[5]};DETAILED_TYPE=None;MAPQ={mapq};SUPPREAD={line[7]};RNAMES={reads}\tGT:GQ:VAF:DR:DV\t.:.:.:.:{line[7]}\n"
                     )
                     indel_num += 1
         vcf_output.close()
@@ -233,15 +232,17 @@ class GafParser:
             nf, nr = 0, 0
             for i in range(n):
                 length += t[6][i]
-                mapq   += t[7][i]
-                tsd_length  += t[8][i]
-                polyA_length  += t[9][i]
+                mapq += t[7][i]
+                tsd_length += t[8][i]
+                polyA_length += t[9][i]
 
                 # 11th element
                 if t[-1][i][0] == "+":
                     nf += 1
                 else:
                     nr += 1
+
+            # pick the first indel sequence for the merged indel
             # TODO: calculate concensus sequence in the next version
             indel_seq = t[10][0]
             mapq = math.floor(mapq / n + 0.499)
@@ -320,6 +321,8 @@ class GafParser:
                 merge_j = -1
                 # where merge starts
                 for j in range(len(b) - 1, -1, -1):
+                    # ai: [start, end, read_name, mapq, strand, indel length, tsd length, polyA length, indel seq]
+                    # bj: [start, end, ., mapq, ., indel length, [indel length], [mapq], [tsd length], [polyA length], [indel seq], [strandreadname]]
                     bj = b[j]
 
                     if bj[5] * ai[5] <= 0:
@@ -330,7 +333,9 @@ class GafParser:
                     la = ai[5] if ai[5] > 0 else -ai[5]
                     lb = bj[5] if bj[5] > 0 else -bj[5]
 
+                    # ai and bj indel length difference
                     diff = la - lb if la > lb else lb - la
+                    # ai and bj indel maximum length
                     max_indel = la if la > lb else lb
 
                     # two indels are different skip merge
@@ -375,6 +380,7 @@ class GafParser:
                             [f"{ai[4]}{ai[2]}"],
                         ]
                     )
+            # output indel that are skipped in the merging for loop
             while len(b) > 0:
                 t = b.pop(0)
                 print_bed(ctg, t)

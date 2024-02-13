@@ -54,8 +54,15 @@ def getindel(
     print("get indel...")
     command = " ".join(sys.argv)
     print(command)
-    gafs = GafParser([input, normal], prefix)
-    gafs.parse_indel(mapq, mlen, verbose, n_cpus=cpu)
+
+    ds = False
+    if input.replace(".paf", "") == input and normal.replace(".paf", "") == normal:
+        # minimap2 output do not have ds:Z tag yet
+        ds = True
+
+    input_samples = [input, normal] if normal is not None else [input]
+    gafs = GafParser(input_samples, prefix)
+    gafs.parse_indel(mapq, mlen, verbose, n_cpus=cpu, ds=ds)
     gafs.merge_indel(min_cnt=support_read, min_mapq=mapq)
     gafs.bed2vcf(command=command)
 
@@ -100,7 +107,8 @@ def getindel_cython(
     """Get indel reads and merge the microhomology reads into large indels"""
     print("get cython indel...")
     command = " ".join(sys.argv)
-    gafs = cy_GafParser([input, normal], prefix)
+    input_samples = [input, normal] if normal is not None else [input]
+    gafs = cy_GafParser(input_samples, prefix)
     gafs.parse_indel(mapq, mlen, verbose, n_cpus=cpu)
     gafs.merge_indel(min_cnt=support_read, min_mapq=mapq)
     gafs.bed2vcf(command=command)

@@ -2,6 +2,11 @@
 """
 
 import gzip
+from typing import Optional
+import intervaltree  # type: ignore
+from intervaltree import Interval  # type: ignore
+
+
 import math
 import os
 import functools
@@ -43,7 +48,10 @@ def parse_one_line(line, min_mapq=30, min_len=100, verbose=False, lineno=0, ds=T
 class GafParser(object):
     """Gaf file parser"""
 
-    def __init__(self, gaf_paths: list[str], output: str):
+    def __init__(self, gaf_paths: list[str], 
+                 output: str, 
+                 vntr: Optional[str] = None, 
+                 cent: Optional[str] = None) -> None:
         """
         parameters
         ------------
@@ -52,6 +60,8 @@ class GafParser(object):
         self.gaf_paths = gaf_paths
         assert len(self.gaf_paths) >= 1
         self.output = output
+        self.vntr = vntr
+        self.cent = cent
 
     def parse_indel(
         self,
@@ -223,6 +233,21 @@ class GafParser(object):
                     indel_num += 1
         vcf_output.close()
 
+    def parse_bed(self, bed) -> dict:
+        bed_dict: dict[Any, Any] = {}
+        with open(bed) as bed_file:
+            for line in bed_file:
+                line = line.strip().split()
+                if line[0] not in bed_dict:
+                    bed_dict[line[0]] = intervaltree.IntervalTree()
+                bed_dict[line[0]].add(
+                    Interval(
+                        int(line[1]),
+                        int(line[2]),
+                    )
+                )
+        return bed_dict
+
     def merge_indel(
         self,
         min_mapq: int = 5,
@@ -234,6 +259,11 @@ class GafParser(object):
 
         If the two indel overlap and have the same type and similar length, then merge together
         """
+        if self.vntr is not None:
+            vntr_sites_dict = self.parse_bed(self.vntr)
+        if self.cent is not None:
+            cent_sites_dict = self.parse_bed(self.cent)
+
         merged_output = gzip.open(f"{self.output}_mergedindel.bed.gz", "wt")
 
         def print_bed(ctg, t):
@@ -259,10 +289,8 @@ class GafParser(object):
                 else:
                     nr += 1
 
-            # pick the first indel sequence for the merged indel
-            # TODO: calculate concensus sequence in the next version
             indel_seq = "N"
-
+            # TODO: calculate concensus sequence in the next version
             if self.ds: # gaf file, pick a arbitrary sequence
                 indel_seq = t[10][0]
 
@@ -286,6 +314,15 @@ class GafParser(object):
                 tsd_len_str = "0"
                 polyA_len_str = "0"
 
+            cent_hit = False
+            vntr_hit = False
+            if self.vntr is not None:
+                if ctg in vntr_sites_dict:
+                    vntr_hit = len(vntr_sites_dict[ctg].overlap(t[0], t[1])) > 0
+            if self.cent is not None:
+                if ctg in cent_sites_dict:
+                    cent_hit = len(cent_sites_dict[ctg].overlap(t[0], t[1])) > 0
+
             output_str = "\t".join(
                 map(
                     str,
@@ -302,6 +339,8 @@ class GafParser(object):
                         f"mq:i:{mapq}",
                         f"cf:i:{nf}",
                         f"cr:i:{nr}",
+                        vntr_hit,
+                        cent_hit,
                         f"rd:Z:{','.join(t[-1])}",  # +/-readname
                     ],
                 )

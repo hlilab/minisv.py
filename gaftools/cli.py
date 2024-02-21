@@ -22,6 +22,18 @@ def cli():
     help="tumor or normal sample input gaf/paf file, this is required input, if paired normal sample provided, this should be input tumor sample",
 )
 @click.option(
+    "--vntr",
+    required=False,
+    type=click.Path(exists=True),
+    help="optional vntr sites for flagging potential false discovery"
+)
+@click.option(
+    "--cent",
+    required=False,
+    type=click.Path(exists=True),
+    help="optional centromere sites for flagging potential false discovery"
+)
+@click.option(
     "-r", "--support_read", required=True, type=int, help="supported read threshold"
 )
 @click.option("-m", "--mapq", required=True, type=int, help="read mapping quality")
@@ -42,6 +54,8 @@ def cli():
 @click.option("-v", "--verbose", is_flag=True, help="verbose option for debug")
 def getindel(
     input: str,
+    vntr: str,
+    cent: str,
     support_read: int,
     mapq: int,
     cpu: int,
@@ -61,7 +75,7 @@ def getindel(
         ds = True
 
     input_samples = [input, normal] if normal is not None else [input]
-    gafs = GafParser(input_samples, prefix)
+    gafs = GafParser(input_samples, prefix, vntr, cent)
     gafs.parse_indel(mapq, mlen, verbose, n_cpus=cpu, ds=ds)
     gafs.merge_indel(min_cnt=support_read, min_mapq=mapq)
     gafs.bed2vcf(command=command)

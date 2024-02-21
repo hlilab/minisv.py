@@ -230,6 +230,10 @@ class GafParser(object):
         win_size: int = 100,
         max_diff: float = 0.05,
     ):
+        """ Merge the similar indels 
+
+        If the two indel overlap and have the same type and similar length, then merge together
+        """
         merged_output = gzip.open(f"{self.output}_mergedindel.bed.gz", "wt")
 
         def print_bed(ctg, t):
@@ -258,7 +262,8 @@ class GafParser(object):
             # pick the first indel sequence for the merged indel
             # TODO: calculate concensus sequence in the next version
             indel_seq = "N"
-            if self.ds: # gaf file 
+
+            if self.ds: # gaf file, pick a arbitrary sequence
                 indel_seq = t[10][0]
 
             mapq = math.floor(mapq / n + 0.499)
@@ -321,20 +326,30 @@ class GafParser(object):
 
         # iterate through contig
         for ctg in merged_indel_dict:
-            # sort indels by start
-            merged_indel_dict[ctg].sort(key=lambda x: x[0])
             # key: contig, value:[start, end, read_name, mapq, strand, indel length, tsd length, polyA length, indel seq]
+            # sort indels by start, end, indel length, and strand, read name 
+            # this will fix the merge indel issue
+            merged_indel_dict[ctg].sort(key=lambda x: (x[0], x[1], x[5], x[4], x[2]))
 
+            # sanity check reads before merging
+            # merged_indel_dict[ctg].sort(key=lambda x: x[0])
+            # for key in ctg:
+            #     for indel in merged_indel_dict[ctg]:
+            #         test='\t'.join(map(str, indel))
+            #         print(f"{test}")
+
+            # all indels
             a = merged_indel_dict[ctg]
+            # candidate merged indel
             b = []
             # iterate through indel
             for i in range(len(a)):
-                # ith indel or L1
+                # ith indel or L1 element
                 ai = a[i]
 
+                # compare ai with existing merged indels
                 while len(b) > 0:
-                    # indel ai start position
-                    # larger than indel end position
+                    # indel ai start position larger than indel end position
                     if ai[0] - b[0][1] > win_size:
                         t = b.pop(0)
                         print_bed(ctg, t)
@@ -344,25 +359,42 @@ class GafParser(object):
                 merge_j = -1
                 # where merge starts
                 for j in range(len(b) - 1, -1, -1):
+                    # start from the closest indel to ai
                     # ai: [start, end, read_name, mapq, strand, indel length, tsd length, polyA length, indel seq]
                     # bj: [start, end, ., mapq, ., indel length, [indel length], [mapq], [tsd length], [polyA length], [indel seq], [strandreadname]]
                     bj = b[j]
 
                     if bj[5] * ai[5] <= 0:
-                        # bj and ai are not the same type, deletion or insertion
+                        # bj and ai are not the same SV type, 
+                        # deletion cannot merge with insertion
+                        # it is not break here...
+                        # continue to compare with next candidate merged indel
                         continue
 
                     # ai and bj indel length
                     la = ai[5] if ai[5] > 0 else -ai[5]
-                    lb = bj[5] if bj[5] > 0 else -bj[5]
+                    # BUG!
+                    # lb = bj[5] if bj[5] > 0 else -bj[5]
 
-                    # ai and bj indel length difference
-                    diff = la - lb if la > lb else lb - la
-                    # ai and bj indel maximum length
-                    max_indel = la if la > lb else lb
+                    # insertion
+                    if all([bjj > 0 for bjj in bj[6]]):
+                        # conservative minimum distance between ai and a list of bj indels
+                        diff = min([abs(la - bjj) for bjj in bj[6]])
+                        # ai and bj indel maximum length
+                        max_indel = max(bj[6] + [la])
+                    # deletion
+                    elif all([bjj < 0 for bjj in bj[6]]):
+                        # minimum distance between ai and a list of bj indels
+                        diff = min([abs(la - (-bjj)) for bjj in bj[6]])
+                        # ai and bj indel maximum length
+                        max_indel = max(-min(bj[6]), la)
+                    else:
+                        raise Exception("Bug!")
 
                     # two indels are different skip merge
+                    # sorted order may change this result
                     if diff > max_indel * max_diff:
+                        # continue to compare with next candidate merged indel
                         continue
 
                     # indel length
@@ -379,16 +411,22 @@ class GafParser(object):
                         bj[10].append(ai[6])
                         # read name
                         bj[11].append(f"{ai[4]}{ai[2]}")
-                    else:
+                    else: # paf file
                         bj[8].append(f"{ai[4]}{ai[2]}")
 
                     # reassign the end point
+                    # if bj contains the ai indel
+                    # use bj end else ai end
                     bj[1] = bj[1] if bj[1] > ai[1] else ai[1]
                     merge_j = j
+                    # ai indel only merge one time successfully
+                    # with the last bj indel in the candidate merged list
+                    # then break
                     break
 
-                # empty indel b list
-                # initialize with first ai indel
+                # empty indel b list, initialize with first ai indel
+                # or ai is different from bj based on max_diff and sv_type
+                # put in the ai into b
                 if merge_j < 0:
                     # ai: [start, end, read_name, mapq, strand, indel length, tsd length, polyA length, indel seq]
                     # bj: [start, end, ., mapq, ., indel length, [indel length], [mapq], [tsd length], [polyA length], [indel seq], [strandreadname]]
@@ -396,11 +434,11 @@ class GafParser(object):
                         b.append(
                             [
                                 ai[0],
-                                ai[1],
+                                ai[1], # always the most recent/largest coordinate indel
                                 ".",
                                 ai[3],
                                 ".",
-                                ai[5],
+                                ai[5], # NOTED issue: only a constant first indel length is used for max diff compute
                                 [ai[5]],
                                 [ai[3]],
                                 [ai[6]],
@@ -526,6 +564,7 @@ class AlignedRead(object):
         """
 
         # at least 12 columns for one read
+        # read should be minigraph output
         if len(self.read) < 12:
             return []
 
@@ -608,11 +647,13 @@ class AlignedRead(object):
                     raise Exception("Bug!")
                 left_tsd = m[1] if m[1] is not None else ""
                 right_tsd = m[4] if m[4] is not None else ""
+
                 # tsd sequences right + left is the reference sequences
                 # due to aligner design
                 # a: [start, end, indel length, tsd length, polyA length, tsd seq, indel seq]
                 tsd = right_tsd + left_tsd
                 a[i][3] = len(tsd)
+
                 a[i][5] = tsd if len(tsd) > 0 else "."
                 internal_seq = m[2]
                 internal_seqlen = len(internal_seq)
@@ -779,187 +820,6 @@ class AlignedRead(object):
                         a[i][3],
                         a[i][4],
                         a[i][6],
-                    ]
-                )
-        return output_indels
-
-    def get_tsd(
-        self,
-        min_mapq: int = 5,
-        min_len: int = 100,
-        max_cnt: int = 5,
-        min_frac=0.7,
-        dbg: bool = False,
-    ) -> list:
-        """Get TSD from one aligned long read in GAF or PAF file"""
-        # similar to cs tag
-        # https://github.com/lh3/minimap2#cs
-        # /(:[0-9]+|\*[a-z][a-z]|[=\+\-][A-Za-z]+)+/
-        ds_Z = self.ds_Z
-        assert len(self.read) >= 12, "incomplete GAF file"
-        self.convert_type()
-
-        # low mapping quality
-        if self.mapq < min_mapq:
-            return []
-
-        # mapped fraction is low, default 70%
-        if self.read[3] - self.read[2] < self.read[1] * min_frac:
-            return []
-
-        ds_segs_iter = ds_pattern.findall(ds_Z)
-        # record TSD
-        a = []
-        x = self.path_start
-        for op, ds_str in ds_segs_iter:
-            seq = re.sub(r"[\]\[]", "", ds_str) if op in ["+", "-"] else ""
-            if op == ":":
-                length = int(ds_str)
-            elif op == "*":
-                length = 1
-            elif op in ["+", "-"]:
-                length = len(seq)
-            else:
-                raise Exception("not found ds:Z supported tag")
-            if op == "-" or op == "+":
-                if length >= min_len:
-                    if op == "-":  # deletion
-                        a.append([x, x + length, -length])
-                    elif op == "+":  # insertion
-                        a.append([x - 1, x + 1, length])
-            if op == "*" or op == ":" or op == "-":
-                x += length
-
-        if dbg:
-            print(self.path_start, ds_Z, self.read[0])
-
-        # No indel cigar or too many
-        if len(a) == 0 or len(a) > max_cnt:
-            return []
-        if dbg:
-            print("X0", a)
-
-        # path segments
-        seg = []
-        if re.match(r"[><]", self.path):
-            assert self.strand == "+", "reverse strand on path"
-            y = 0
-            for m in path_seg_pattern.findall(self.path):
-                st, en = int(m[2]), int(m[3])
-                # [path, absolute path start, absolute path end, path orientation, relative seg start, relative seg end]
-                seg.append([m[1], st, en, 1 if m[0] == ">" else -1, y, y + (en - st)])
-                # accumulate seg start
-                y += en - st
-        else:
-            # https://github.com/lh3/miniasm/blob/master/PAF.md
-            # https://github.com/lh3/gfatools/blob/master/doc/rGFA.md
-            # [path, 0, path length, 1, 0, path length]
-            seg.append([self.path, 0, self.read[6], 1, 0, self.read[6]])
-
-        if dbg:
-            print("X1", seg)
-
-        # starts and ends points for the indels on the segments
-        # also record start and end segments index
-        # these are used to overlap between path segment and indels
-        sts, ens = [], []
-        for i in range(len(a)):
-            k = 0
-            # segment k relative end <= indel relative start
-            while k < len(seg) and seg[k][5] <= a[i][0]:
-                k += 1
-            if k == len(seg):
-                try:
-                    raise StartPosException("failed to find start position")
-                except StartPosException:
-                    print("start", k, len(seg), seg, a, self.read[0])
-                    return []
-            # relative distance between indel start and segment start
-            start_l = a[i][0] - seg[k][4]
-            # graph path > or linear genome
-            if seg[k][3] > 0:
-                # [seg index, absolute path start + distance to indel]
-                sts.append([k, seg[k][1] + start_l])
-            # graph path <, ask Heng
-            else:
-                # [seg index, absolute path end - distance to indel]
-                sts.append([k, seg[k][2] - start_l])
-
-        for i in range(len(a)):
-            k = 0
-            # segment k relative end <= indel relative end
-            while k < len(seg) and seg[k][5] <= a[i][1]:
-                k += 1
-            if k == len(seg):
-                try:
-                    raise EndPosException("failed to find end position")
-                except EndPosException:
-                    print("end", k, len(seg), seg, a, self.read[0])
-                    return []
-            # relative distance between indel end and segment start
-            end_l = a[i][1] - seg[k][4]
-            # graph path > or linear genome
-            if seg[k][3] > 0:
-                # [seg index, absolute path start + distance to indel]
-                ens.append([k, seg[k][1] + end_l])
-            # graph path <, ask Heng
-            else:
-                ens.append([k, seg[k][2] - end_l])
-
-        output_indels = []
-        for i in range(len(a)):
-            if dbg:
-                print("X2", a[i][0], a[i][1], sts[i][0], ens[i][0])
-
-            # indel on the same segment of the path
-            if sts[i][0] == ens[i][0]:
-                s = seg[sts[i][0]]
-                # seg starts with > or linear reference
-                if s[3] > 0:
-                    strand = self.strand
-                # seg starts with <
-                else:
-                    strand = "-" if self.strand == "+" else "+"
-
-                if sts[i][1] < ens[i][1]:
-                    start = sts[i][1]
-                else:
-                    start = ens[i][1]
-
-                if sts[i][1] > ens[i][1]:
-                    end = sts[i][1]
-                else:
-                    end = ens[i][1]
-
-                output_indels.append(
-                    [s[0], start, end, self.read[0], self.mapq, strand, a[i][2]]
-                )
-            # indel on different segments
-            else:
-                path = []
-                length = 0
-                # iterate through segments
-                # j from indel start seg index to ends seg index
-                for j in range(sts[i][0], ens[i][0] + 1):
-                    s = seg[j]
-                    length += s[2] - s[1]
-                    orientation = ">" if s[3] > 0 else "<"
-                    # >chr1:1-2
-                    path.append(orientation + s[0] + f":{s[1]}-{s[2]}")
-
-                # relative seg start
-                off = seg[sts[i][0]][4]
-                # minigraph always use "+" in genome path
-                # convert back to relative path coordinate
-                output_indels.append(
-                    [
-                        "".join(path),
-                        a[i][0] - off,
-                        a[i][1] - off,
-                        self.read[0],
-                        self.mapq,
-                        "+",
-                        a[i][2],
                     ]
                 )
         return output_indels

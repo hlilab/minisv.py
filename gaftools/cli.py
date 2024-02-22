@@ -1,7 +1,6 @@
 #!/usr/bin/env python
 
 import sys
-
 import rich_click as click
 
 from .cygaftools import GafParser as cy_GafParser
@@ -34,6 +33,12 @@ def cli():
     help="optional centromere sites for flagging potential false discovery"
 )
 @click.option(
+    "--l1",
+    required=False,
+    type=click.Path(exists=True),
+    help="optional L1 sequence fasta for filtering L1 elements analysis"
+)
+@click.option(
     "-r", "--support_read", required=True, type=int, help="supported read threshold"
 )
 @click.option("-m", "--mapq", required=True, type=int, help="read mapping quality")
@@ -56,6 +61,7 @@ def getindel(
     input: str,
     vntr: str,
     cent: str,
+    l1: str,
     support_read: int,
     mapq: int,
     cpu: int,
@@ -70,12 +76,16 @@ def getindel(
     print(command)
 
     ds = False
-    if input.replace(".paf", "") == input and normal.replace(".paf", "") == normal:
-        # minimap2 output do not have ds:Z tag yet
-        ds = True
+    if normal is not None:
+        if input.replace(".paf", "") == input and normal.replace(".paf", "") == normal:
+            # minimap2 output do not have ds:Z tag yet
+            ds = True
+    else:
+        if input.replace(".paf", "") == input:
+            ds = True
 
     input_samples = [input, normal] if normal is not None else [input]
-    gafs = GafParser(input_samples, prefix, vntr, cent)
+    gafs = GafParser(input_samples, prefix, vntr, cent, l1)
     gafs.parse_indel(mapq, mlen, verbose, n_cpus=cpu, ds=ds)
     gafs.merge_indel(min_cnt=support_read, min_mapq=mapq)
     gafs.bed2vcf(command=command)

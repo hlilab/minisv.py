@@ -1,11 +1,11 @@
-"""An module for parsing gfa alignment from minigraph
+"""An module for parsing GAF/PAF format from minigraph alignment and minimap2 alignment
 """
 
 import gzip
 from typing import Optional
 import intervaltree  # type: ignore
 from intervaltree import Interval  # type: ignore
-
+import mappy as mp
 
 import math
 import os
@@ -14,6 +14,7 @@ import functools
 import re
 from datetime import datetime
 from multiprocessing import Pool
+
 
 cigar_pattern = re.compile(r"(\d+)([=XIDM])")
 path_seg_pattern = re.compile(r"([><])([^><:\s]+):(\d+)-(\d+)")
@@ -51,7 +52,8 @@ class GafParser(object):
     def __init__(self, gaf_paths: list[str], 
                  output: str, 
                  vntr: Optional[str] = None, 
-                 cent: Optional[str] = None) -> None:
+                 cent: Optional[str] = None,
+                 l1: Optional[str] = None) -> None:
         """
         parameters
         ------------
@@ -62,6 +64,7 @@ class GafParser(object):
         self.output = output
         self.vntr = vntr
         self.cent = cent
+        self.l1 = l1
 
     def parse_indel(
         self,
@@ -74,8 +77,9 @@ class GafParser(object):
         self.ds = ds
 
         lineno = 0
+
         if os.path.exists(f"{self.output}.bed.gz"):
-            return
+           return
 
         output = gzip.open(f"{self.output}.bed.gz", "wt")
 
@@ -168,6 +172,8 @@ class GafParser(object):
 ##INFO=<ID=STRANDS,Number=1,Type=String,Description="Breakpoint strandedness">
 ##INFO=<ID=DETAILED_TYPE,Number=1,Type=Integer,Description="Detailed type of the SV">
 ##INFO=<ID=MAPQ,Number=1,Type=Integer,Description="Median mapping quality of supporting reads">
+##INFO=<ID=VNTR,Number=1,Type=Integer,Description="VNTR support">
+##INFO=<ID=CENTROMERE,Number=1,Type=Integer,Description="Overlap with Centromere">
 ##INFO=<ID=SUPPREAD,Number=1,Type=Integer,Description="Number of supporting reads">
 ##INFO=<ID=END,Number=1,Type=Integer,Description="End position of the SV">
 ##INFO=<ID=RNAMES,Number=.,Type=String,Description="Names of supporting reads">
@@ -203,7 +209,7 @@ class GafParser(object):
         #  tsd_len_str,  # average tsd length
         #  polyA_len_str,  # average polyA length
         #  indel_seq,  # randomly pick one
-        #  n, ".", f"mq:i:{mapq}", f"cf:i:{nf}", f"cr:i:{nr}", f"rd:Z:+/-readname"]
+        #  n, ".", f"mq:i:{mapq}", f"cf:i:{nf}", f"cr:i:{nr}", vntr, centromere, f"rd:Z:+/-readname"]
         with gzip.open(f"{self.output}_mergedindel.bed.gz", "rt") as merge_indel_file:
             indel_num = 0
             for line in merge_indel_file:
@@ -225,10 +231,12 @@ class GafParser(object):
                     # Not sure how other tool define PRECISE/IMPRECISE
                     mapq = line[9].replace("mq:i:", "")
                     reads = line[-1].replace("rd:Z:", "")
+                    VNTR = line[-3] == "True"
+                    CENT = line[-2] == "True"
                     # GT:GQ:VAF:DR:DV 0|1:279:0.45:36:29
                     # Not sure how to decide GT, GQ and VAF, DR yet
                     vcf_output.write(
-                        f"{line[0]}\t{start}\tgaftools1.{type}.{indel_num}\tN\t{ALT}\t.\tPASS\tEND={end}SVTYPE={type};SVLEN={line[3]};TSDLEN={line[4]};POLYALEN={line[5]};DETAILED_TYPE=None;MAPQ={mapq};SUPPREAD={line[7]};RNAMES={reads}\tGT:GQ:VAF:DR:DV\t.:.:.:.:{line[7]}\n"
+                        f"{line[0]}\t{start}\tgaftools1.{type}.{indel_num}\tN\t{ALT}\t.\tPASS\tEND={end}SVTYPE={type};SVLEN={line[3]};TSDLEN={line[4]};POLYALEN={line[5]};DETAILED_TYPE=None;MAPQ={mapq};SUPPREAD={line[7]};VNTR={VNTR};CENTROMERE={CENT};RNAMES={reads}\tGT:GQ:VAF:DR:DV\t.:.:.:.:{line[7]}\n"
                     )
                     indel_num += 1
         vcf_output.close()
@@ -259,6 +267,12 @@ class GafParser(object):
 
         If the two indel overlap and have the same type and similar length, then merge together
         """
+
+        if self.l1 is not None:
+            minimap2 = mp.Aligner(self.l1)
+            if not minimap2:
+                raise Exception("Error: failed to load/build index")
+        
         if self.vntr is not None:
             vntr_sites_dict = self.parse_bed(self.vntr)
         if self.cent is not None:
@@ -289,7 +303,7 @@ class GafParser(object):
                 else:
                     nr += 1
 
-            indel_seq = "N"
+            indel_seq = "."
             # TODO: calculate concensus sequence in the next version
             if self.ds: # gaf file, pick a arbitrary sequence
                 indel_seq = t[10][0]
@@ -323,6 +337,19 @@ class GafParser(object):
                 if ctg in cent_sites_dict:
                     cent_hit = len(cent_sites_dict[ctg].overlap(t[0], t[1])) > 0
 
+            if self.l1 is not None:
+                hits = minimap2.map(indel_seq)
+                hits_list = []
+                for hit in hits:
+                    hits_list.append((hit.ctg, hit.mlen/hit.ctg_len))
+                hits_list.sort(key=lambda x: x[-1])
+                if len(hits_list) == 0:
+                    best_hit=[".", 0]
+                else:
+                    best_hit = hits_list[-1]
+            else:
+                best_hit=[".", 0]
+
             output_str = "\t".join(
                 map(
                     str,
@@ -341,6 +368,7 @@ class GafParser(object):
                         f"cr:i:{nr}",
                         vntr_hit,
                         cent_hit,
+                        f"{best_hit[0]}:{best_hit[1]}",
                         f"rd:Z:{','.join(t[-1])}",  # +/-readname
                     ],
                 )

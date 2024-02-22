@@ -114,6 +114,16 @@ files = [
 sortedcontainers = ">=2.0,<3.0"
 
 [[package]]
+name = "mappy"
+version = "2.26"
+description = "Minimap2 python binding"
+optional = false
+python-versions = "*"
+files = [
+    {file = "mappy-2.26.tar.gz", hash = "sha256:e53fbe9a3ea8762a64b8103f4f779c9fb16d418eaa0a731f45cebc83867a9b71"},
+]
+
+[[package]]
 name = "markdown-it-py"
 version = "3.0.0"
 description = "Python port of markdown-it. Markdown parsing, done right!"
@@ -280,4 +290,4 @@ files = [
 [metadata]
 lock-version = "2.0"
 python-versions = "^3.10"
-content-hash = "6e0b9b1ae60b39d09af75a44f819b674d98dc038699650a69d85d129cff104a4"
+content-hash = "c7b2bf2f76ec6be40c31813ca507151165852283cfd67a3770b166e2c4ee3c0c"

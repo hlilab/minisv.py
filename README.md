@@ -5,14 +5,15 @@
 ```sh
 git clone https://github.com/qinqian/gaftools
 cd gaftools && docker build -t gaftools .
-gaf=input_gaf
-normalgaf=normal_gaf
+tumor_gaf=tumor_gaf
+normal_gaf=normal_gaf
 
 # tumor-only or normal-only mode
-docker run -i -v $(pwd):$(pwd) gaftools gaftools getindel-cython -c 4 -m 30 -l 100 --input $(pwd)/$gaf -r 3 -p $(pwd)/${gaf/.gaf/}_mapq30_mlen100_cnt3
+docker run -i -v $(pwd):$(pwd) gaftools gaftools getindel-cython -c 4 -m 30 -l 100 --input $(pwd)/$gaf -r 3 -p output_prefix
 
 # tumor-normal pair mode
-docker run -i -v $(pwd):$(pwd) gaftools gaftools getindel -c 4 -m 30 -l 100 --input $(pwd)/$gaf --normal $normalgaf -r 3 -p $(pwd)/${gaf/.gaf/}_mapq30_mlen100_cnt3
+docker run -i -v $(pwd):$(pwd) gaftools gaftools getindel -c 4 -m 30 -l 100 --input $(pwd)/$gaf --normal $normalgaf -r 3 -p output_prefix --cent grch38_cen.bed --vntr human_GRCh38_no_alt_analysis_set.trf.bed --l1 L1.fasta 
+
 ```
 
 ### <a name="ubuntu"></a>Use Ubuntu

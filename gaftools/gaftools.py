@@ -338,15 +338,18 @@ class GafParser(object):
                     cent_hit = len(cent_sites_dict[ctg].overlap(t[0], t[1])) > 0
 
             if self.l1 is not None:
-                hits = minimap2.map(indel_seq)
-                hits_list = []
-                for hit in hits:
-                    hits_list.append((hit.ctg, hit.mlen/hit.ctg_len))
-                hits_list.sort(key=lambda x: x[-1])
-                if len(hits_list) == 0:
-                    best_hit=[".", 0]
+                if length > 0: # only apply to insertion for L1 
+                    hits = minimap2.map(indel_seq)
+                    hits_list = []
+                    for hit in hits:
+                        hits_list.append((hit.ctg, hit.mlen/hit.ctg_len))
+                    hits_list.sort(key=lambda x: x[-1])
+                    if len(hits_list) == 0:
+                        best_hit=[".", 0]
+                    else:
+                        best_hit = hits_list[-1]
                 else:
-                    best_hit = hits_list[-1]
+                    best_hit=[".", 0]
             else:
                 best_hit=[".", 0]
 

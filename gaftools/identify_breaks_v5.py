@@ -1,6 +1,7 @@
 import argparse
 import sys 
 
+#test comment
 def load_gaf_for_breakpoints(gafFile, min_mapQ=10, min_map_len=2000):
     #read in lines and split into feilds
     lines = [] 

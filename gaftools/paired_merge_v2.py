@@ -16,6 +16,7 @@ margin = args.w
 outPref = args.o
 cents = args.regs
 
+#read in given difficult mapping regions file
 centromeres = {}
 if len(cents) > 0:
     with open(cents, 'r') as f:
@@ -24,6 +25,7 @@ if len(cents) > 0:
             c = [int(s[1]),int(s[2])]
             centromeres[s[0]] = [min(c),max(c)]
 
+#combine normal and tumor BNDs
 lines = [] 
 with open(normal, 'r') as f:
     for line in f:
@@ -32,11 +34,13 @@ with open(normal, 'r') as f:
 with open(tumor, 'r') as g: 
     for line in g: 
         lines.append((line.strip() + '\tt').split('\t'))
- 
+#sort the combinded files together by chrs and locations
 sorted_lines = sorted(lines, key = lambda x: (x[0],x[3], int(x[1]), int(x[4])))
 
 #for sor in sorted_lines: 
  #   sys.stdout.write('\t'.join(sor) + '\n')
+
+#function to determine distance of break point from given centromeres
 def get_dist_to_cen(chrom, loc):
     if chrom not in centromeres.keys():
         return 'N/A'
@@ -48,6 +52,7 @@ def get_dist_to_cen(chrom, loc):
         dist = loc -max(cen_locs)
     return str(dist) 
 
+#function that takes a cluster of breakpoints within the margin to merge into one line
 def get_merges(cluster): 
     if len(cluster) < 5: 
         return None 
@@ -65,6 +70,7 @@ def get_merges(cluster):
     end_dist = get_dist_to_cen(arr[0,3], end_val) 
     return '\t'.join([arr[0,0], str(start_val), arr[0,2], arr[0,3], str(end_val), start_dist+','+end_dist , ','.join(arr[:,5]), ','.join(arr[:,6]), str(ns)+ '/' + str(ts)])
 
+#convert the breakpoint text format into vcf format
 def vcf_format(original, number): 
     out = [] 
     s = original.strip().split('\t')
@@ -84,6 +90,7 @@ prev_line = [0,0,0,0,0,0]
 lines_to_merge = [] 
 i=1
 for l in sorted_lines:
+    #cluster BNDs that are within the margin on both sides of the BND
     if l[0] == prev_line[0] and abs(int(prev_line[1]) - int(l[1])) <= margin and l[3] == prev_line[3] and abs(int(prev_line[4]) - int(l[4])) <= margin:
         lines_to_merge.append(l)
     else: 

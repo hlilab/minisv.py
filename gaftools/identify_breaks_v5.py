@@ -1,13 +1,14 @@
 import argparse
 import sys 
 
-#test comment
+#function to read in file and sort by read id
 def load_gaf_for_breakpoints(gafFile, min_mapQ=10, min_map_len=2000):
     #read in lines and split into feilds
     lines = [] 
+    #dont read in lines that are below mapping Q or min map length
     with open(gafFile, 'r') as f:
         for line in f: 
-            #lines.append(line.strip()) 
+           
             s = line.strip().split('\t')
             if int(s[11])  < min_mapQ:
                 continue
@@ -15,21 +16,21 @@ def load_gaf_for_breakpoints(gafFile, min_mapQ=10, min_map_len=2000):
                 continue 
             lines.append(s)
     #sort lines by read ID and mapping start in read 
-    sorted_lines = sorted(lines, key = lambda x: (x[0], int(x[2])))
-    #for line in sorted_lines: 
-     #   sys.stdout.write('\t'.join(line) + '\n') 
-    #sys.stdout.write('\n'.join(sorted_lines))
+    #TODO: Apparently i dont need to sort by read ids, so rewrite to just sort cluster by locations in read 
+    sorted_lines = sorted(lines, key = lambda x: (x[0], int(x[2])))  
     return sorted_lines
 
-def get_contig(s, ch, location, is_start):
-    if s.startswith('c'):
+#function to return final node in graph path as this is where the BND is occuring
+def get_contig(s, ch, location, is_first):
+    #ignore if not in graph path
+    if s.startswith('chr'):
         return s, str(location) 
     else:
         nodes = [i for i, ltr in enumerate(s) if ltr in ch]     
         if len(nodes) ==1 : 
             return s, str(location)
-
-        if is_start:
+        #start of breakpoint, want end coord of read mapping, so last node
+        if is_first:
             total = 0
             for i in range(1, len(nodes)):
                 cur = s[nodes[i-1] :nodes[i]]
@@ -37,16 +38,23 @@ def get_contig(s, ch, location, is_start):
                 diff = int(locs[1]) -int(locs[0])
                 total += abs(diff) 
             return s[nodes[-1]:], str(location - total) 
+        #end of break want start coord, so first node 
         else: 
             return s[nodes[0]:nodes[1]], str(location) 
 
+#function to find the break point between two chuncks of the read mapping
 def find_break(m1, m2):
+    #translate strands into breakpoint notation
     strand_translation = {'+':'>', '-':'<'}
-    # m1[8]: path end point, m2[7]: path start point
+    # m1[8]: path end point, m2[7]: path start point 
+    #get info of first chunk of read
     contig_m1 = get_contig(m1[5], ['>', '<'], int(m1[8]), True)
+    #second chunk of read 
     contig_m2 = get_contig(m2[5], ['>', '<'], int(m2[7]), False) 
+    #return a more legible break point text format
     return [contig_m1[0], contig_m1[1], strand_translation[m1[4]] + strand_translation[m2[4]], contig_m2[0], contig_m2[1], str(min([int(m1[11]), int(m2[11])])),m1[0]]
 
+#function to convert node locations into chromosome/contig locations 
 def convert(contig, brk, direct):
     if not contig.startswith(('<', '>')):
         return contig, brk , direct
@@ -56,6 +64,7 @@ def convert(contig, brk, direct):
     else:
         return contig.split(':')[0][1:] ,  str(int(locs[1]) -  int(brk)), contig.split(':')[0][0]
 
+#swap "<<" to ">>" and "<>" to "><" based on symmetries
 def adj_graph_paths(original): 
     first = convert(original[0], original[1],original[2].strip()[0])
     second = convert(original[3], original[4], original[2].strip()[1])
@@ -77,17 +86,19 @@ def adj_graph_paths(original):
     original[4] = second[1]
     return '\t'.join(original) 
 
-
-def output_breakpoints_bed(sorted_lines):
-    read_maps = []
+#calling all the functions above
+def output_breakpoints_bed(sorted_lines): 
     prev_line = [0,0]
     output = [] 
+    #go through all sorted lines
     for line in sorted_lines:
+        #get read ids with supp. mappings
         if line[0] == prev_line[0]:
             breaks = find_break(prev_line, line)
             if breaks:
                 output.append(adj_graph_paths(breaks))
         prev_line = line
+    #write to stdout for now, but can just pass array straight into merge function
     sys.stdout.write('\n'.join(output))
 
 

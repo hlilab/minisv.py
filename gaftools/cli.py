@@ -87,8 +87,12 @@ def getindel(
     input_samples = [input, normal] if normal is not None else [input]
     gafs = GafParser(input_samples, prefix, vntr, cent, l1)
     gafs.parse_indel(mapq, mlen, verbose, n_cpus=cpu, ds=ds)
+
     gafs.merge_indel(min_cnt=support_read, min_mapq=mapq)
+    #gafs.merge_breakpoints(min_cnt=support_read, min_mapq=mapq)
+
     gafs.bed2vcf(command=command)
+    #gafs.bed2breakpoint_vcf(min_cnt=support_read, min_mapq=mapq)
 
 
 @cli.command()

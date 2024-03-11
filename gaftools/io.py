@@ -18,10 +18,10 @@ def load_gaf_to_grouped_reads(gafFile, min_mapQ=5, min_map_len=2000):
     Returns:
     - sorted_lines (list): List of GAF lines sorted by cluster location in read.
     """
+    print(gafFile)
 
     # Read lines, split into fields, and filter based on conditions
     lines = []
-              
     with open(gafFile, 'r') as gafFileHandler:
         for line in gafFileHandler:        
             fields = line.strip().split('\t')
@@ -32,15 +32,25 @@ def load_gaf_to_grouped_reads(gafFile, min_mapQ=5, min_map_len=2000):
             if fields[16] == "tp:A:S" or int(fields[11]) < min_mapQ or int(fields[8]) - int(fields[7]) < min_map_len:
                 continue
 
-            if read_name == lines[-1][0]:
-                lines.append(fields)
+            if len(lines) >= 1:
+                if read_name == lines[-1][0]:
+                    lines.append(fields)
+                else:
+                    # locally sort a group of reads
+                    sorted_lines = sorted(lines, key = lambda x: (x[0], int(x[2])))  
+                    yield sorted_lines
+                    lines = [fields]
             else:
-                yield lines
-                lines = []
+                lines.append(fields)
+    sorted_lines = sorted(lines, key = lambda x: (x[0], int(x[2])))  
+    yield lines
+    del lines
+
 
 if __name__ == '__main__':
     # test script locally
     parser = argparse.ArgumentParser(description='Identify Break Points from GAF input') 
-    parser.add_argument('-i', metavar='<input.gaf>', required=True, help='input GAF file')
+    parser.add_argument('-i', required=True, help='input GAF file')
     args = parser.parse_args()
-    load_gaf_to_grouped_reads(args.i)
+    for line in load_gaf_to_grouped_reads(args.i):
+        print(line)

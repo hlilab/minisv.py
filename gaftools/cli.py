@@ -56,6 +56,7 @@ def cli():
 @click.option(
     "-p", "--prefix", required=True, type=str, help="output prefix for table and figure"
 )
+@click.option("-d", "--ds", is_flag=True, help="support ds tag or not")
 @click.option("-v", "--verbose", is_flag=True, help="verbose option for debug")
 def getindel(
     input: str,
@@ -68,6 +69,7 @@ def getindel(
     mlen: int,
     normal: str,
     prefix: str,
+    ds: bool,
     verbose: bool,
 ):
     """Get indel reads and merge the microhomology reads into large indels"""
@@ -75,14 +77,14 @@ def getindel(
     command = " ".join(sys.argv)
     print(command)
 
-    ds = False
-    if normal is not None:
-        if input.replace(".paf", "") == input and normal.replace(".paf", "") == normal:
-            # minimap2 output do not have ds:Z tag yet
-            ds = True
-    else:
-        if input.replace(".paf", "") == input:
-            ds = True
+    #ds = False
+    #if normal is not None:
+    #    if input.replace(".paf", "") == input and normal.replace(".paf", "") == normal:
+    #        # minimap2 output do not have ds:Z tag yet
+    #        ds = True
+    #else:
+    #    if input.replace(".paf", "") == input:
+    #        ds = True
 
     input_samples = [input, normal] if normal is not None else [input]
     gafs = GafParser(input_samples, prefix, vntr, cent, l1)

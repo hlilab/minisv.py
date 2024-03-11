@@ -38,7 +38,7 @@ def load_gaf_to_grouped_reads(gafFile, min_mapQ=5, min_map_len=2000):
                 else:
                     # locally sort a group of reads
                     sorted_lines = sorted(lines, key = lambda x: (x[0], int(x[2])))  
-                    yield sorted_lines
+                    yield lines
                     lines = [fields]
             else:
                 lines.append(fields)

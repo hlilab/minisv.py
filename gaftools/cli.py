@@ -46,6 +46,7 @@ def cli():
     "-c", "--cpu", required=True, type=int, default=1, help="read mapping quality"
 )
 @click.option("-l", "--mlen", required=True, type=int, help="min indel length")
+@click.option("-a", "--maplen", required=True, type=int, help="min mapping length")
 @click.option(
     "-n",
     "--normal",
@@ -67,6 +68,7 @@ def getindel(
     mapq: int,
     cpu: int,
     mlen: int,
+    maplen: int,
     normal: str,
     prefix: str,
     ds: bool,
@@ -77,18 +79,10 @@ def getindel(
     command = " ".join(sys.argv)
     print(command)
 
-    #ds = False
-    #if normal is not None:
-    #    if input.replace(".paf", "") == input and normal.replace(".paf", "") == normal:
-    #        # minimap2 output do not have ds:Z tag yet
-    #        ds = True
-    #else:
-    #    if input.replace(".paf", "") == input:
-    #        ds = True
-
     input_samples = [input, normal] if normal is not None else [input]
     gafs = GafParser(input_samples, prefix, vntr, cent, l1)
-    gafs.parse_indel(mapq, mlen, verbose, n_cpus=cpu, ds=ds)
+    #gafs.parse_indel(mapq, mlen, verbose, n_cpus=cpu, ds=ds)
+    gafs.parse_indel_on_group_reads(mapq, mlen, maplen, verbose, n_cpus=cpu, ds=ds)
 
     gafs.merge_indel(min_cnt=support_read, min_mapq=mapq)
     #gafs.merge_breakpoints(min_cnt=support_read, min_mapq=mapq)

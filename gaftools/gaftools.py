@@ -10,6 +10,7 @@ import mappy as mp
 import math
 import os
 import functools
+from .io import load_gaf_to_grouped_reads
 
 import re
 from datetime import datetime
@@ -66,6 +67,46 @@ class GafParser(object):
         self.cent = cent
         self.l1 = l1
 
+    def parse_indel_on_group_reads(
+        self,
+        min_mapq: int = 5,
+        min_indel_len: int = 50,
+        min_map_len: int = 2000,
+        verbose: bool = False,
+        n_cpus: int = 4,
+        ds: bool = True
+    ) -> None:
+        self.ds = ds
+
+        if os.path.exists(f"{self.output}.bed.gz"):
+           return
+
+        output = gzip.open(f"{self.output}.bed.gz", "wt")
+        if len(self.gaf_paths) == 1:
+            read_tags = ["sample"]
+        elif len(self.gaf_paths) == 2:
+            read_tags = ["tumor", "normal"]
+
+        lineno = 0
+        for gaf_path, read_tag in zip(self.gaf_paths, read_tags):
+            print(gaf_path, read_tag)
+            for grouped_reads in load_gaf_to_grouped_reads(gaf_path, min_mapq, min_map_len):
+                for read in grouped_reads:
+                    lineno += 1
+                    parsed_read = AlignedRead(read)
+                    large_indels_one_read = parsed_read.get_indels(
+                        min_mapq=min_mapq,
+                        min_len=min_indel_len,
+                        dbg=verbose,
+                        lineno=lineno,
+                        ds=ds
+                    )
+                    for indel in large_indels_one_read:
+                        indel[3] = f"{read_tag}_{indel[3]}"
+                        indel_row_str = "\t".join(map(str, indel))
+                        output.write(f"{indel_row_str}\n")
+        output.close()
+
     def parse_indel(
         self,
         min_mapq: int = 5,
@@ -84,7 +125,7 @@ class GafParser(object):
         output = gzip.open(f"{self.output}.bed.gz", "wt")
 
         if len(self.gaf_paths) == 1:
-            read_tags = [""]
+            read_tags = ["sample"]
         elif len(self.gaf_paths) == 2:
             read_tags = ["tumor", "normal"]
 

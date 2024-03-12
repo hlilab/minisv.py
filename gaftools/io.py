@@ -3,7 +3,8 @@ We could put the output interface into this submodule as well.
 """
 import argparse
 import sys 
-
+import identify_breaks_v5  
+import merge_break_pts_v3
 
 def load_gaf_to_grouped_reads(gafFile, min_mapQ=5, min_map_len=2000):
     """
@@ -18,7 +19,7 @@ def load_gaf_to_grouped_reads(gafFile, min_mapQ=5, min_map_len=2000):
     Returns:
     - sorted_lines (list): List of GAF lines sorted by cluster location in read.
     """
-    print(gafFile)
+    #print(gafFile)
 
     # Read lines, split into fields, and filter based on conditions
     lines = []
@@ -37,12 +38,12 @@ def load_gaf_to_grouped_reads(gafFile, min_mapQ=5, min_map_len=2000):
                     lines.append(fields)
                 else:
                     # locally sort a group of reads
-                    sorted_lines = sorted(lines, key = lambda x: (x[0], int(x[2])))  
+                    sorted_lines = sorted(lines, key = lambda x: (int(x[2])))  
                     yield sorted_lines
                     lines = [fields]
             else:
                 lines.append(fields)
-    sorted_lines = sorted(lines, key = lambda x: (x[0], int(x[2])))  
+    sorted_lines = sorted(lines, key = lambda x: (int(x[2])))  
     yield sorted_lines
     del lines
     del sorted_lines
@@ -53,5 +54,17 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Identify Break Points from GAF input') 
     parser.add_argument('-i', required=True, help='input GAF file')
     args = parser.parse_args()
-    for line in load_gaf_to_grouped_reads(args.i):
-        print(line)
+    groups = load_gaf_to_grouped_reads(args.i)
+    all_breaks = [] 
+    for group in groups:
+        if len(group) > 1:
+            brks = identify_breaks_v5.call_breakpoints(group) 
+            for brk in brks:
+              all_breaks.append(brk) 
+    #sys.stdout.write('\n'.join(merge_break_pts_v3.merge_breaks(all_breaks,'/hlilab/jakob/break_points/chm13v2.cen-mask_adj.bed')))  
+    sys.stdout.write('\n'.join(merge_break_pts_v3.merge_breaks(all_breaks))) 
+        
+
+
+
+

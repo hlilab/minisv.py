@@ -46,11 +46,22 @@ def get_contig(s, ch, location, is_first):
 def find_break(m1, m2):
     #translate strands into breakpoint notation
     strand_translation = {'+':'>', '-':'<'}
-    # m1[8]: path end point, m2[7]: path start point 
+    # determine break locations based on strand 
+    b1 = 0
+    if m1[4] == '+':
+        b1 =  int(m1[8])
+    elif m1[4] == '-':
+        b1 = int(m1[7])
+    b2 = 0
+    if m2[4] == '+':
+        b2 = int(m2[7])
+    elif m2[4]  == '-':
+        b2 = int(m2[8])
+
     #get info of first chunk of read
-    contig_m1 = get_contig(m1[5], ['>', '<'], int(m1[8]), True)
+    contig_m1 = get_contig(m1[5], ['>', '<'], b1, True)
     #second chunk of read 
-    contig_m2 = get_contig(m2[5], ['>', '<'], int(m2[7]), False) 
+    contig_m2 = get_contig(m2[5], ['>', '<'], b2, False) 
     #return a more legible break point text format
     return [contig_m1[0], contig_m1[1], strand_translation[m1[4]] + strand_translation[m2[4]], contig_m2[0], contig_m2[1], str(min([int(m1[11]), int(m2[11])])),m1[0]]
 
@@ -84,27 +95,30 @@ def adj_graph_paths(original):
     original[2] = arrows
     original[3] = second[0]
     original[4] = second[1]
-    return '\t'.join(original) 
+    return original 
 
 #calling all the functions above
-def output_breakpoints_bed(sorted_lines): 
-    prev_line = [0,0]
-    output = [] 
+#def output_breakpoints_bed(sorted_lines): 
+    #prev_line = [0,0]
+    #output = [] 
     #go through all sorted lines
-    for line in sorted_lines:
+    #for line in sorted_lines:
         #get read ids with supp. mappings
-        if line[0] == prev_line[0]:
-            breaks = find_break(prev_line, line)
-            if breaks:
-                output.append(adj_graph_paths(breaks))
-        prev_line = line
+       # if line[0] == prev_line[0]:
+         #       output.append(adj_graph_paths(breaks))
+        #prev_line = line
     #write to stdout for now, but can just pass array straight into merge function
-    sys.stdout.write('\n'.join(output))
+    #sys.stdout.write('\n'.join(output))
 
 
-def call_breakpoints(gafFile, min_mapQ=10, min_map_len=2000):
-    sorted_lines = load_gaf_for_breakpoints(gafFile, min_mapQ=10, min_map_len=2000)
-    output_breakpoints_bed(sorted_lines)
+def call_breakpoints(read_cluster, min_mapQ=10, min_map_len=2000):
+    #sorted_lines = load_gaf_for_breakpoints(gafFile, min_mapQ=10, min_map_len=2000)
+    output = []      
+    for i in range(1, len(read_cluster)):
+        breaks = find_break(read_cluster[i-1], read_cluster[i])
+        if breaks:
+             output.append(adj_graph_paths(breaks))
+    return output 
 
 
 if __name__ == "__main__":

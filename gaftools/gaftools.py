@@ -52,6 +52,7 @@ class GafParser(object):
 
     def __init__(self, gaf_paths: list[str], 
                  output: str, 
+                 assembly: str, 
                  vntr: Optional[str] = None, 
                  cent: Optional[str] = None,
                  l1: Optional[str] = None) -> None:
@@ -66,6 +67,7 @@ class GafParser(object):
         self.vntr = vntr
         self.cent = cent
         self.l1 = l1
+        self.assembly = assembly
 
     def parse_indel_on_group_reads(
         self,
@@ -170,7 +172,9 @@ class GafParser(object):
         hdr.append(f'##command="{command}"')
         hdr.append(f'##fileDate="{formatted_time}"')
         # remove lengths for both hg38 and chm13
-        hdr.append(
+
+        if self.assembly in ["hg38", "chm13"]:
+            hdr.append(
             """##contig=<ID=chr1>
 ##contig=<ID=chr2>
 ##contig=<ID=chr3>
@@ -197,6 +201,35 @@ class GafParser(object):
 ##contig=<ID=chrY>
 ##contig=<ID=chrM>"""
         )
+        elif self.assembly == "hg19":
+            hdr.append(
+            """##contig=<ID=1>
+##contig=<ID=2>
+##contig=<ID=3>
+##contig=<ID=4>
+##contig=<ID=5>
+##contig=<ID=6>
+##contig=<ID=7>
+##contig=<ID=8>
+##contig=<ID=9>
+##contig=<ID=10>
+##contig=<ID=11>
+##contig=<ID=12>
+##contig=<ID=13>
+##contig=<ID=14>
+##contig=<ID=15>
+##contig=<ID=16>
+##contig=<ID=17>
+##contig=<ID=18>
+##contig=<ID=19>
+##contig=<ID=20>
+##contig=<ID=21>
+##contig=<ID=22>
+##contig=<ID=X>
+##contig=<ID=Y>
+##contig=<ID=MT>"""
+)
+
         hdr.append(
             """##ALT=<ID=INS,Description="Insertion">
 ##ALT=<ID=DEL,Description="Deletion">

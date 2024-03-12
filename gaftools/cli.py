@@ -57,6 +57,9 @@ def cli():
 @click.option(
     "-p", "--prefix", required=True, type=str, help="output prefix for table and figure"
 )
+@click.option(
+    "-s", "--assembly", required=True, type=str, help="assembly version, e.g., chm13, hg38, hg19"
+)
 @click.option("-d", "--ds", is_flag=True, help="support ds tag or not")
 @click.option("-v", "--verbose", is_flag=True, help="verbose option for debug")
 def getindel(
@@ -72,6 +75,7 @@ def getindel(
     normal: str,
     prefix: str,
     ds: bool,
+    assembly: str,
     verbose: bool,
 ):
     """Get indel reads and merge the microhomology reads into large indels"""
@@ -80,8 +84,7 @@ def getindel(
     print(command)
 
     input_samples = [input, normal] if normal is not None else [input]
-    gafs = GafParser(input_samples, prefix, vntr, cent, l1)
-    #gafs.parse_indel(mapq, mlen, verbose, n_cpus=cpu, ds=ds)
+    gafs = GafParser(input_samples, prefix, assembly, vntr, cent, l1)
     gafs.parse_indel_on_group_reads(mapq, mlen, maplen, verbose, n_cpus=cpu, ds=ds)
 
     gafs.merge_indel(min_cnt=support_read, min_mapq=mapq)

@@ -58,11 +58,11 @@ def cli():
     "-p", "--prefix", required=True, type=str, help="output prefix for table and figure"
 )
 @click.option(
-    "-s", "--assembly", required=True, type=str, help="assembly version, e.g., chm13, hg38, hg19"
+    "-s", "--assembly", required=True, type=str, help="assembly version, e.g., chm13graph,chm13linear,grch37graph,grch37linear,grch38graph,grch38linear"
 )
 @click.option("-d", "--ds", is_flag=True, help="support ds tag or not")
 @click.option("-v", "--verbose", is_flag=True, help="verbose option for debug")
-def getindel(
+def getsv(
     input: str,
     vntr: str,
     cent: str,
@@ -85,10 +85,10 @@ def getindel(
 
     input_samples = [input, normal] if normal is not None else [input]
     gafs = GafParser(input_samples, prefix, assembly, vntr, cent, l1)
-    gafs.parse_indel_on_group_reads(mapq, mlen, maplen, verbose, n_cpus=cpu, ds=ds)
+    all_breakpts = gafs.parse_sv_on_group_reads(mapq, mlen, maplen, verbose, n_cpus=cpu, ds=ds)
 
     gafs.merge_indel(min_cnt=support_read, min_mapq=mapq)
-    #gafs.merge_breakpoints(min_cnt=support_read, min_mapq=mapq)
+    gafs.merge_breakpts(all_breakpts)
 
     gafs.bed2vcf(command=command)
     #gafs.bed2breakpoint_vcf(min_cnt=support_read, min_mapq=mapq)

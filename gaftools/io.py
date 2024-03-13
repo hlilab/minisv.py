@@ -3,8 +3,8 @@ We could put the output interface into this submodule as well.
 """
 import argparse
 import sys 
-import identify_breaks_v5  
-import merge_break_pts_v3
+from .identify_breaks_v5 import call_breakpoints
+from .merge_break_pts_v3 import merge_breaks
 
 def load_gaf_to_grouped_reads(gafFile, min_mapQ=5, min_map_len=2000):
     """
@@ -58,11 +58,11 @@ if __name__ == '__main__':
     all_breaks = [] 
     for group in groups:
         if len(group) > 1:
-            brks = identify_breaks_v5.call_breakpoints(group) 
+            brks = call_breakpoints(group) 
             for brk in brks:
               all_breaks.append(brk) 
     #sys.stdout.write('\n'.join(merge_break_pts_v3.merge_breaks(all_breaks,'/hlilab/jakob/break_points/chm13v2.cen-mask_adj.bed')))  
-    sys.stdout.write('\n'.join(merge_break_pts_v3.merge_breaks(all_breaks))) 
+    sys.stdout.write('\n'.join(merge_breaks(all_breaks))) 
         
 
 

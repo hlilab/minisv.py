@@ -11,6 +11,8 @@ import math
 import os
 import functools
 from .io import load_gaf_to_grouped_reads
+from .identify_breaks_v5 import call_breakpoints
+from .merge_break_pts_v3 import merge_breaks
 
 import re
 from datetime import datetime
@@ -69,7 +71,7 @@ class GafParser(object):
         self.l1 = l1
         self.assembly = assembly
 
-    def parse_indel_on_group_reads(
+    def parse_sv_on_group_reads(
         self,
         min_mapq: int = 5,
         min_indel_len: int = 50,
@@ -83,16 +85,24 @@ class GafParser(object):
         if os.path.exists(f"{self.output}.bed.gz"):
            return
 
-        output = gzip.open(f"{self.output}.bed.gz", "wt")
+        indel_output = gzip.open(f"{self.output}_indel.bed.gz", "wt")
+        breakpoint_output = gzip.open(f"{self.output}_brk.bed.gz", "wt")
         if len(self.gaf_paths) == 1:
             read_tags = ["sample"]
         elif len(self.gaf_paths) == 2:
             read_tags = ["tumor", "normal"]
 
         lineno = 0
+        all_breaks = [] 
         for gaf_path, read_tag in zip(self.gaf_paths, read_tags):
             print(gaf_path, read_tag)
             for grouped_reads in load_gaf_to_grouped_reads(gaf_path, min_mapq, min_map_len):
+                if len(grouped_reads) > 1:
+                    brks = call_breakpoints(grouped_reads) 
+                    for brk in brks:
+                        all_breaks.append(brk) 
+                        brk_row_str = "\t".join(map(str, indel))
+                        breakpoint_output.write(f"{brk_row_str}\n")
                 for read in grouped_reads:
                     lineno += 1
                     parsed_read = AlignedRead(read)
@@ -106,8 +116,15 @@ class GafParser(object):
                     for indel in large_indels_one_read:
                         indel[3] = f"{read_tag}_{indel[3]}"
                         indel_row_str = "\t".join(map(str, indel))
-                        output.write(f"{indel_row_str}\n")
-        output.close()
+                        indel_output.write(f"{indel_row_str}\n")
+        indel_output.close()
+        breakpoint_output.close()
+        return all_breaks
+
+    def merge_breakpts(self, all_breaks):
+        break_merged_file = gzip.open(f"{self.output}_mergedbreaks.bed.gz", "rt")
+        break_merged_file.write('\n'.join(merge_breaks(all_breaks)))
+        break_merged_file.close()
 
     def parse_indel(
         self,
@@ -173,7 +190,8 @@ class GafParser(object):
         hdr.append(f'##fileDate="{formatted_time}"')
         # remove lengths for both hg38 and chm13
 
-        if self.assembly in ["hg38", "chm13"]:
+        #chm13graph,chm13linear,grch37graph,grch37linear,grch38graph,grch38linear
+        if self.assembly in ["chm13graph", "chm13linear", "grch38graph", "grch38linear"]:
             hdr.append(
             """##contig=<ID=chr1>
 ##contig=<ID=chr2>
@@ -201,7 +219,7 @@ class GafParser(object):
 ##contig=<ID=chrY>
 ##contig=<ID=chrM>"""
         )
-        elif self.assembly == "hg19":
+        elif self.assembly in ['grch37graph','grch37linear']:
             hdr.append(
             """##contig=<ID=1>
 ##contig=<ID=2>

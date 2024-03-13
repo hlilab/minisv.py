@@ -1,6 +1,7 @@
 """An module for parsing GAF/PAF format from minigraph alignment and minimap2 alignment
 """
 
+import copy
 import gzip
 from typing import Optional
 import intervaltree  # type: ignore
@@ -97,11 +98,13 @@ class GafParser(object):
         for gaf_path, read_tag in zip(self.gaf_paths, read_tags):
             print(gaf_path, read_tag)
             for grouped_reads in load_gaf_to_grouped_reads(gaf_path, min_mapq, min_map_len):
+
                 if len(grouped_reads) > 1:
                     brks = call_breakpoints(grouped_reads) 
                     for brk in brks:
+                        #print(brk)
                         all_breaks.append(brk) 
-                        brk_row_str = "\t".join(map(str, indel))
+                        brk_row_str = "\t".join(map(str, brk))
                         breakpoint_output.write(f"{brk_row_str}\n")
                 for read in grouped_reads:
                     lineno += 1
@@ -122,7 +125,7 @@ class GafParser(object):
         return all_breaks
 
     def merge_breakpts(self, all_breaks):
-        break_merged_file = gzip.open(f"{self.output}_mergedbreaks.bed.gz", "rt")
+        break_merged_file = gzip.open(f"{self.output}_mergedbreaks.bed.gz", "wt")
         break_merged_file.write('\n'.join(merge_breaks(all_breaks)))
         break_merged_file.close()
 
@@ -472,7 +475,7 @@ class GafParser(object):
 
         # [path, start, end, read_name, mapq, strand, indel length, tsd length, polyA length, indel seq]
         merged_indel_dict = {}
-        with gzip.open(f"{self.output}.bed.gz", "rt") as indel_read_output:
+        with gzip.open(f"{self.output}_indel.bed.gz", "rt") as indel_read_output:
             for line in indel_read_output:
                 t = line.strip().split("\t")
                 t[1] = int(t[1])

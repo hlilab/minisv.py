@@ -23,7 +23,9 @@ def load_gaf_for_breakpoints(gafFile, min_mapQ=10, min_map_len=2000):
 #function to return final node in graph path as this is where the BND is occuring
 def get_contig(s, ch, location, is_first):
     #ignore if not in graph path
-    if s.startswith('chr'):
+    #NOTE: hg19 do not have chr as start string
+    #      we extended to hg19 with hard-coded conditions
+    if s.startswith('chr') or s.isdigit() or s.startswith("GL") or s.startswith('hs') or s in ['MT', 'X', 'Y']:
         return s, str(location) 
     else:
         nodes = [i for i, ltr in enumerate(s) if ltr in ch]     

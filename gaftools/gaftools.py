@@ -51,13 +51,11 @@ def parse_one_line(line, min_mapq=30, min_len=100, verbose=False, lineno=0, ds=T
 
 
 def parse_grouped_reads(grouped_reads, min_mapq=30, min_indel_len=100, verbose=False, lineno=0, ds=True):
-    all_breaks = []
     if len(grouped_reads) > 1:
-        brks = call_breakpoints(grouped_reads) 
-        for brk in brks:
-            all_breaks.append(brk) 
+        all_breaks = call_breakpoints(grouped_reads) 
+    else:
+        all_breaks = []
     for read in grouped_reads:
-        lineno += 1
         parsed_read = AlignedRead(read)
         large_indels_one_read = parsed_read.get_indels(
             min_mapq=min_mapq,
@@ -143,10 +141,9 @@ class GafParser(object):
                 breakpoint_output.close()
             else:
                 fin = load_gaf_to_grouped_reads(gaf_path, min_mapq, min_map_len)
-                all_breaks = []
                 with Pool(n_cpus) as pool:
                     parser = functools.partial(parse_grouped_reads, ds=ds, min_mapq=min_mapq, min_indel_len=min_indel_len, verbose=verbose)
-                    for indel_results, brk_results in pool.imap(parser, fin, chunksize=10000):
+                    for (indel_results, brk_results) in pool.imap(parser, fin, chunksize=1):
                         for indel in indel_results:
                             indel[3] = f"{read_tag}_{indel[3]}"
                             indel_row_str = "\t".join(map(str, indel))
@@ -765,7 +762,7 @@ class AlignedRead(object):
         """
 
         # at least 12 columns for one read
-        # read should be minigraph output
+        # read should be minigraph or minimap2 output
         if len(self.read) < 12:
             return []
 

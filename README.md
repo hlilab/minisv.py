@@ -9,10 +9,10 @@ tumor_gaf=tumor_gaf
 normal_gaf=normal_gaf
 
 # tumor-only or normal-only mode
-docker run -i -v $(pwd):$(pwd) gaftools gaftools getindel-cython -c 4 -m 30 -l 100 --input $(pwd)/$gaf -r 3 -p output_prefix
+docker run -i -v $(pwd):$(pwd) gaftools gaftools getsv -c 4 -m 5 -l 50 --input tumor.gaf -r 2 -p output_prefix --vntr trf.bed --l1 l1.fasta -a 2000 -s grch38graph --ds
 
 # tumor-normal pair mode
-docker run -i -v $(pwd):$(pwd) gaftools gaftools getindel -c 4 -m 30 -l 100 --input $(pwd)/$gaf --normal $normalgaf -r 3 -p output_prefix --cent grch38_cen.bed --vntr human_GRCh38_no_alt_analysis_set.trf.bed --l1 L1.fasta 
+docker run -i -v $(pwd):$(pwd) gaftools gaftools getsv -c 4 -m 5 -l 50 --input tumor.gaf --normal normal.gaf -r 2 -p output_prefix --vntr trf.bed --l1 l1.fasta -a 2000 -s grch38graph --ds
 
 ```
 

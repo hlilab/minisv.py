@@ -50,6 +50,25 @@ def parse_one_line(line, min_mapq=30, min_len=100, verbose=False, lineno=0, ds=T
     return large_indels_one_read
 
 
+def parse_grouped_reads(grouped_reads, min_mapq=30, min_indel_len=100, verbose=False, lineno=0, ds=True):
+    all_breaks = []
+    if len(grouped_reads) > 1:
+        brks = call_breakpoints(grouped_reads) 
+        for brk in brks:
+            all_breaks.append(brk) 
+    for read in grouped_reads:
+        lineno += 1
+        parsed_read = AlignedRead(read)
+        large_indels_one_read = parsed_read.get_indels(
+            min_mapq=min_mapq,
+            min_len=min_indel_len,
+            dbg=verbose,
+            lineno=lineno,
+            ds=ds
+        )
+    return large_indels_one_read, all_breaks
+
+
 class GafParser(object):
     """Gaf file parser"""
 
@@ -86,42 +105,59 @@ class GafParser(object):
         if os.path.exists(f"{self.output}.bed.gz"):
            return
 
-        indel_output = gzip.open(f"{self.output}_indel.bed.gz", "wt")
-        breakpoint_output = gzip.open(f"{self.output}_brk.bed.gz", "wt")
         if len(self.gaf_paths) == 1:
             read_tags = ["sample"]
         elif len(self.gaf_paths) == 2:
             read_tags = ["tumor", "normal"]
 
         lineno = 0
+        indel_output = gzip.open(f"{self.output}_indel.bed.gz", "wt")
+        breakpoint_output = gzip.open(f"{self.output}_brk.bed.gz", "wt")
         all_breaks = [] 
         for gaf_path, read_tag in zip(self.gaf_paths, read_tags):
             print(gaf_path, read_tag)
-            for grouped_reads in load_gaf_to_grouped_reads(gaf_path, min_mapq, min_map_len):
-
-                if len(grouped_reads) > 1:
-                    brks = call_breakpoints(grouped_reads) 
-                    for brk in brks:
-                        #print(brk)
-                        all_breaks.append(brk) 
-                        brk_row_str = "\t".join(map(str, brk))
-                        breakpoint_output.write(f"{brk_row_str}\n")
-                for read in grouped_reads:
-                    lineno += 1
-                    parsed_read = AlignedRead(read)
-                    large_indels_one_read = parsed_read.get_indels(
-                        min_mapq=min_mapq,
-                        min_len=min_indel_len,
-                        dbg=verbose,
-                        lineno=lineno,
-                        ds=ds
-                    )
-                    for indel in large_indels_one_read:
-                        indel[3] = f"{read_tag}_{indel[3]}"
-                        indel_row_str = "\t".join(map(str, indel))
-                        indel_output.write(f"{indel_row_str}\n")
-        indel_output.close()
-        breakpoint_output.close()
+            if n_cpus == 1:
+                for grouped_reads in load_gaf_to_grouped_reads(gaf_path, min_mapq, min_map_len):
+                    if len(grouped_reads) > 1:
+                        brks = call_breakpoints(grouped_reads) 
+                        for brk in brks:
+                            brk[6] = f"{read_tag}_{brk[6]}"
+                            all_breaks.append(brk) 
+                            brk_row_str = "\t".join(map(str, brk))
+                            breakpoint_output.write(f"{brk_row_str}\n")
+                    for read in grouped_reads:
+                        lineno += 1
+                        parsed_read = AlignedRead(read)
+                        large_indels_one_read = parsed_read.get_indels(
+                            min_mapq=min_mapq,
+                            min_len=min_indel_len,
+                            dbg=verbose,
+                            lineno=lineno,
+                            ds=ds
+                        )
+                        for indel in large_indels_one_read:
+                            indel[3] = f"{read_tag}_{indel[3]}"
+                            indel_row_str = "\t".join(map(str, indel))
+                            indel_output.write(f"{indel_row_str}\n")
+                indel_output.close()
+                breakpoint_output.close()
+            else:
+                fin = load_gaf_to_grouped_reads(gaf_path, min_mapq, min_map_len)
+                all_breaks = []
+                with Pool(n_cpus) as pool:
+                    parser = functools.partial(parse_grouped_reads, ds=ds, min_mapq=min_mapq, min_indel_len=min_indel_len, verbose=verbose)
+                    for indel_results, brk_results in pool.imap(parser, fin, chunksize=10000):
+                        for indel in indel_results:
+                            indel[3] = f"{read_tag}_{indel[3]}"
+                            indel_row_str = "\t".join(map(str, indel))
+                            indel_output.write(f"{indel_row_str}\n")
+                        for brk in brk_results:
+                            brk[6] = f"{read_tag}_{brk[6]}"
+                            all_breaks.append(brk)
+                            brk_row_str = "\t".join(map(str, brk))
+                            breakpoint_output.write(f"{brk_row_str}\n")
+                indel_output.close()
+                breakpoint_output.close()
         return all_breaks
 
     def merge_breakpts(self, all_breaks):

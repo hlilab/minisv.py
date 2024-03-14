@@ -21,7 +21,7 @@ def load_gaf_for_breakpoints(gafFile, min_mapQ=10, min_map_len=2000):
     return sorted_lines
 
 #function to return final node in graph path as this is where the BND is occuring
-def get_contig(s, ch, location, is_first):
+def get_contig(s, ch, location, node_end):
     #ignore if not in graph path
     #NOTE: hg19 do not have chr as start string
     #      we extended to hg19 with hard-coded conditions
@@ -32,7 +32,7 @@ def get_contig(s, ch, location, is_first):
         if len(nodes) ==1 : 
             return s, str(location)
         #start of breakpoint, want end coord of read mapping, so last node
-        if is_first:
+        if node_end: 
             total = 0
             for i in range(1, len(nodes)):
                 cur = s[nodes[i-1] :nodes[i]]
@@ -51,19 +51,23 @@ def find_break(m1, m2):
     # determine break locations based on strand 
     b1 = 0
     if m1[4] == '+':
-        b1 =  int(m1[8])
+        b1 =  int(m1[8]) 
+        contig_m1 = get_contig(m1[5], ['>', '<'], b1, True)
     elif m1[4] == '-':
         b1 = int(m1[7])
+        contig_m1 = get_contig(m1[5], ['>', '<'], b1, False)
     b2 = 0
     if m2[4] == '+':
-        b2 = int(m2[7])
+        b2 = int(m2[7]) 
+        contig_m2 = get_contig(m2[5], ['>', '<'], b2, False)
     elif m2[4]  == '-':
         b2 = int(m2[8])
+        contig_m2 = get_contig(m2[5], ['>', '<'], b2, True)
 
     #get info of first chunk of read
-    contig_m1 = get_contig(m1[5], ['>', '<'], b1, True)
+    #contig_m1 = get_contig(m1[5], ['>', '<'], b1, True)
     #second chunk of read 
-    contig_m2 = get_contig(m2[5], ['>', '<'], b2, False) 
+    #contig_m2 = get_contig(m2[5], ['>', '<'], b2, False) 
     #return a more legible break point text format
     return [contig_m1[0], contig_m1[1], strand_translation[m1[4]] + strand_translation[m2[4]], contig_m2[0], contig_m2[1], str(min([int(m1[11]), int(m2[11])])),m1[0]]
 

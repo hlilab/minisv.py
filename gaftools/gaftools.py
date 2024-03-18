@@ -102,7 +102,7 @@ class GafParser(object):
             return
 
         if len(self.gaf_paths) == 1:
-            read_tags = ["sample"]
+            read_tags = [""]
         elif len(self.gaf_paths) == 2:
             read_tags = ["tumor", "normal"]
 
@@ -119,7 +119,9 @@ class GafParser(object):
                     if len(grouped_reads) > 1:
                         brks = call_breakpoints(grouped_reads)
                         for brk in brks:
-                            brk[6] = f"{read_tag}_{brk[6]}"
+                            brk[6] = (
+                                f"{read_tag}_{brk[6]}" if read_tag != "" else brk[6]
+                            )
                             all_breaks.append(brk)
                             brk_row_str = "\t".join(map(str, brk))
                             breakpoint_output.write(f"{brk_row_str}\n")
@@ -134,7 +136,9 @@ class GafParser(object):
                             ds=ds,
                         )
                         for indel in large_indels_one_read:
-                            indel[3] = f"{read_tag}_{indel[3]}"
+                            indel[3] = (
+                                f"{read_tag}_{indel[3]}" if read_tag != "" else indel[3]
+                            )
                             indel_row_str = "\t".join(map(str, indel))
                             indel_output.write(f"{indel_row_str}\n")
                 indel_output.close()
@@ -154,11 +158,15 @@ class GafParser(object):
                     ):
                         # print(indel_results, brk_results)
                         for indel in indel_results:
-                            indel[3] = f"{read_tag}_{indel[3]}"
+                            indel[3] = (
+                                f"{read_tag}_{indel[3]}" if read_tag != "" else indel[3]
+                            )
                             indel_row_str = "\t".join(map(str, indel))
                             indel_output.write(f"{indel_row_str}\n")
                         for brk in brk_results:
-                            brk[6] = f"{read_tag}_{brk[6]}"
+                            brk[6] = (
+                                f"{read_tag}_{brk[6]}" if read_tag != "" else brk[6]
+                            )
                             all_breaks.append(brk)
                             brk_row_str = "\t".join(map(str, brk))
                             breakpoint_output.write(f"{brk_row_str}\n")

@@ -1,8 +1,5 @@
-import sys
-import numpy as np 
 import argparse
-
-
+import numpy as np
 
 
 #funciton that takes a cluster of breakpoints within the margin to merge into one line
@@ -51,14 +48,6 @@ def merge_breaks(breakpoints, margin=100, support=2):
  
 #with open(outPref + '.vcf','w') as final_vcf: 
         #final_vcf.write('\n'.join(all_vcfs)) 
-
-    #with open(outPref + '.txt','w') as final_breaks: 
-     #   final_breaks.write('\n'.join(all_merges)) 
-
-#print(all_vcfs)
-#sys.stdout.write('\n'.join(all_merges)) 
-
-#TODO: add in min supporting reads argument
 if __name__ == "__main__": 
     parser = argparse.ArgumentParser(description='Identify Break Points from GAF input')
     parser.add_argument('-i', metavar='<breakpoints.txt>', required=True, help='input GAF file')

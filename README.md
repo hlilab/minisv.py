@@ -78,7 +78,7 @@ samtools fasta -@ 4 input.bam | minigraph -c -t 4 chm13v2.0.fa - > sample_id.gaf
 
 ```sh
 mode="map-hifi"
-samtools fasta -@ 4 input.bam | minimap2 -c -x $mode -t 4 chm13v2.0.fa - > sample_id.paf 
+samtools fasta -@ 4 input.bam | minimap2 -c -x $mode -t 4 chm13v2.0.fa - > sample_id.paf
 ```
 
 ## <a name="usage"></a>Usage

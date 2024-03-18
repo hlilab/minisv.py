@@ -74,7 +74,7 @@ class GafParser:
                         large_indels_one_read = parsed_read.get_indels(
                             min_mapq=min_mapq,
                             min_len=min_len,
-                            max_cnt=5, min_frac=0.7, 
+                            max_cnt=5, min_frac=0.7,
                             polyA_pen=5, polyA_drop=100
                         )
                         for indel in large_indels_one_read:

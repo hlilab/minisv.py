@@ -197,7 +197,7 @@ class GafParser(object):
         output = gzip.open(f"{self.output}.bed.gz", "wt")
 
         if len(self.gaf_paths) == 1:
-            read_tags = ["sample"]
+            read_tags = [""]
         elif len(self.gaf_paths) == 2:
             read_tags = ["tumor", "normal"]
 
@@ -217,7 +217,9 @@ class GafParser(object):
                             ds=ds,
                         )
                         for indel in large_indels_one_read:
-                            indel[3] = f"{read_tag}_{indel[3]}"
+                            indel[3] = (
+                                f"{read_tag}_{indel[3]}" if read_tag != "" else indel[3]
+                            )
                             indel_row_str = "\t".join(map(str, indel))
                             output.write(f"{indel_row_str}\n")
                 else:

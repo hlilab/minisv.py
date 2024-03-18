@@ -31,21 +31,37 @@ def vcf_format(original, number):
         out.append('\t'.join([s[3],s[4],'bnd_' + str(number+1), 'N', '[' + s[0]+':'+ s[1]+'[N', qual, '.', 'SVTYPE=BND;MATEID=bnd_'+ str(number) + info]))
     return out
 
+def identify_diff_breaks(group, margin): 
+    
+    sorted_group = sorted(group, key = lambda x: (int(x[4])))
+    i = 0 
+    groups = [] 
+    while i < len(sorted_group): 
+        j = 0 
+        while i+j+1 < len(sorted_group) and abs(int(sorted_group[i+j][4]) - int(sorted_group[i+j+1][4])) <= margin: 
+            j +=1
+        groups.append(sorted_group[i:i+j+1]) 
+        i+= (j+1)
+    return groups 
 
 def merge_breaks(breakpoints, margin=100, support=2): 
     all_merges= [] 
     #all_vcfs = ['##fileformat=VCFv4.2\n#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO'] 
     #sort lines  
-    sorted_lines = sorted(breakpoints, key = lambda x: (x[0],x[3], int(x[1]), int(x[4]))) 
+    #sorted_lines = sorted(breakpoints, key = lambda x: (x[0],x[3], int(x[1]), int(x[4]))) 
+    sorted_lines = sorted(breakpoints, key = lambda x: (x[0],x[3], int(x[1]))) 
     i = 0 
     #group breakpoints to merge 
     while i < len(sorted_lines): 
         j = 0 
-        while i+j+1 < len(sorted_lines) and sorted_lines[i+j][0] == sorted_lines[i+j+1][0] and abs(int(sorted_lines[i+j][1]) - int(sorted_lines[i+j+1][1])) <= margin and sorted_lines[i+j][3] == sorted_lines[i+j+1][3] and abs(int(sorted_lines[i+j][4]) - int(sorted_lines[i+j+1][4])) <= margin: 
+        while i+j+1 < len(sorted_lines) and sorted_lines[i+j][0] == sorted_lines[i+j+1][0] and abs(int(sorted_lines[i+j][1]) - int(sorted_lines[i+j+1][1])) <= margin and sorted_lines[i+j][3] == sorted_lines[i+j+1][3]: 
             j +=1
-        out = get_merges(sorted_lines[i:i+j+1], support)
-        if out:
-            all_merges.append(out)
+            
+        groupings = identify_diff_breaks(sorted_lines[i:i+j+1], margin) 
+        for group in groupings:
+            out = get_merges(group, support)
+            if out:
+                all_merges.append(out)
         i += (j + 1)  
     return all_merges
  
@@ -58,19 +74,26 @@ def merge_breaks(breakpoints, margin=100, support=2):
 #print(all_vcfs)
 #sys.stdout.write('\n'.join(all_merges)) 
 
-#TODO: add in min supporting reads argument
 if __name__ == "__main__": 
     parser = argparse.ArgumentParser(description='Identify Break Points from GAF input')
     parser.add_argument('-i', metavar='<breakpoints.txt>', required=True, help='input GAF file')
     parser.add_argument('-w', metavar= '--merge_window', required= False, type=int, default = 100, help = 'Size of window to merge break points in')
     parser.add_argument('-s', metavar= '--min_support', required= False, type=int, default = 2, help = 'minimum reads supporting breakpoint')
     
-    parser.add_argument('-o', metavar='--output', required=True, help='output files header')
+    #parser.add_argument('-o', metavar='--output', required=True, help='output files header')
 
     args = parser.parse_args()
     brkFile = args.i
     margin = args.w
     min_support = args.s
-    outPref =args.o
-    
+    #outPref =args.o
+   
+    lines = [] 
+    with open(brkFile, 'r') as f:
+        for line in f:
+            lines.append(line.strip().split('\t'))
+   
+    sys.stdout.write('\n'.join(merge_breaks(lines, margin, min_support))) 
+
+
 

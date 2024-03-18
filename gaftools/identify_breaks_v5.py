@@ -16,8 +16,8 @@ def load_gaf_for_breakpoints(gafFile, min_mapQ=10, min_map_len=2000):
                 continue 
             lines.append(s)
     #sort lines by read ID and mapping start in read 
-    #TODO: Apparently i dont need to sort by read ids, so rewrite to just sort cluster by locations in read 
-    sorted_lines = sorted(lines, key = lambda x: (x[0], int(x[2])))  
+    
+    sorted_lines = sorted(lines, key = lambda x: (int(x[2])))  
     return sorted_lines
 
 #function to return final node in graph path as this is where the BND is occuring

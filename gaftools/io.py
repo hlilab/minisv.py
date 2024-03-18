@@ -61,7 +61,7 @@ if __name__ == '__main__':
             brks = call_breakpoints(group) 
             for brk in brks:
               all_breaks.append(brk)  
-    sys.stdout.write('\n'.join(merge_breaks(all_breaks))) 
+    sys.stdout.write('\n'.join(merge_breaks(all_breaks,100,5))) 
         
 
 

@@ -15,7 +15,7 @@ import mappy as mp
 from intervaltree import Interval  # type: ignore
 
 from .identify_breaks_v5 import call_breakpoints
-from .io import load_gaf_to_grouped_reads
+from .io import GroupedResults, load_gaf_to_grouped_reads
 from .merge_break_pts_v3 import merge_breaks
 
 cigar_pattern = re.compile(r"(\d+)([=XIDM])")
@@ -50,16 +50,19 @@ def parse_one_line(line, min_mapq=30, min_len=100, verbose=False, lineno=0, ds=T
 def parse_grouped_reads(
     grouped_reads, min_mapq=30, min_indel_len=100, verbose=False, lineno=0, ds=True
 ):
-    if len(grouped_reads) > 1:
-        all_breaks = call_breakpoints(grouped_reads)
-    else:
-        all_breaks = []
+    all_indels = []
     for read in grouped_reads:
         parsed_read = AlignedRead(read)
         large_indels_one_read = parsed_read.get_indels(
             min_mapq=min_mapq, min_len=min_indel_len, dbg=verbose, lineno=lineno, ds=ds
         )
-    return large_indels_one_read, all_breaks
+        all_indels += large_indels_one_read
+
+    if len(grouped_reads) > 1:
+        all_breaks = call_breakpoints(grouped_reads)
+    else:
+        all_breaks = []
+    return GroupedResults(all_indels, all_breaks)
 
 
 class GafParser(object):
@@ -153,16 +156,16 @@ class GafParser(object):
                         min_indel_len=min_indel_len,
                         verbose=verbose,
                     )
-                    for indel_results, brk_results in pool.imap(
-                        parser, fin, chunksize=1000
-                    ):
-                        # print(indel_results, brk_results)
+                    for group_results in pool.imap(parser, fin, chunksize=300000):
+                        indel_results = group_results.indels
                         for indel in indel_results:
                             indel[3] = (
                                 f"{read_tag}_{indel[3]}" if read_tag != "" else indel[3]
                             )
                             indel_row_str = "\t".join(map(str, indel))
                             indel_output.write(f"{indel_row_str}\n")
+
+                        brk_results = group_results.breakpoints
                         for brk in brk_results:
                             brk[6] = (
                                 f"{read_tag}_{brk[6]}" if read_tag != "" else brk[6]
@@ -191,10 +194,10 @@ class GafParser(object):
 
         lineno = 0
 
-        if os.path.exists(f"{self.output}.bed.gz"):
-            return
+        # if os.path.exists(f"{self.output}.bed.gz"):
+        #    return
 
-        output = gzip.open(f"{self.output}.bed.gz", "wt")
+        output = gzip.open(f"{self.output}_indel.bed.gz", "wt")
 
         if len(self.gaf_paths) == 1:
             read_tags = [""]

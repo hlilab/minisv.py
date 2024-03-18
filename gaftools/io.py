@@ -3,8 +3,16 @@ We could put the output interface into this submodule as well.
 """
 import argparse
 import sys
+from dataclasses import dataclass
+
 from gaftools.identify_breaks_v5 import call_breakpoints
 from gaftools.merge_break_pts_v3 import merge_breaks
+
+
+@dataclass
+class GroupedResults:
+    indels: str
+    breakpoints: str
 
 
 def load_gaf_to_grouped_reads(gafFile, min_mapQ=5, min_map_len=2000):

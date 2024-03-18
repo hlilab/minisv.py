@@ -150,9 +150,9 @@ class GafParser(object):
                         verbose=verbose,
                     )
                     for indel_results, brk_results in pool.imap(
-                        parser, fin, chunksize=1
+                        parser, fin, chunksize=1000
                     ):
-                        print(indel_results, brk_results)
+                        # print(indel_results, brk_results)
                         for indel in indel_results:
                             indel[3] = f"{read_tag}_{indel[3]}"
                             indel_row_str = "\t".join(map(str, indel))

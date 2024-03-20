@@ -1,24 +1,22 @@
 """An module for parsing GAF/PAF format from minigraph alignment and minimap2 alignment
 """
 
-import copy
+import functools
 import gzip
-from typing import Optional
-import intervaltree  # type: ignore
-from intervaltree import Interval  # type: ignore
-import mappy as mp
-
 import math
 import os
-import functools
-from .io import load_gaf_to_grouped_reads
-from .identify_breaks_v5 import call_breakpoints
-from .merge_break_pts_v3 import merge_breaks
-
 import re
 from datetime import datetime
 from multiprocessing import Pool
+from typing import Any, Optional
 
+import intervaltree  # type: ignore
+import mappy as mp
+from intervaltree import Interval  # type: ignore
+
+from .identify_breaks_v5 import call_breakpoints
+from .io import GroupedResults, load_gaf_to_grouped_reads
+from .merge_break_pts_v3 import merge_breaks
 
 cigar_pattern = re.compile(r"(\d+)([=XIDM])")
 path_seg_pattern = re.compile(r"([><])([^><:\s]+):(\d+)-(\d+)")
@@ -44,38 +42,41 @@ def parse_one_line(line, min_mapq=30, min_len=100, verbose=False, lineno=0, ds=T
     read = line.strip().split()
     parsed_read = AlignedRead(read)
     large_indels_one_read = parsed_read.get_indels(
-        min_mapq=min_mapq, min_len=min_len, dbg=verbose, lineno=lineno,
-        ds=ds
+        min_mapq=min_mapq, min_len=min_len, dbg=verbose, lineno=lineno, ds=ds
     )
     return large_indels_one_read
 
 
-def parse_grouped_reads(grouped_reads, min_mapq=30, min_indel_len=100, verbose=False, lineno=0, ds=True):
-    if len(grouped_reads) > 1:
-        all_breaks = call_breakpoints(grouped_reads) 
-    else:
-        all_breaks = []
+def parse_grouped_reads(
+    grouped_reads, min_mapq=30, min_indel_len=100, verbose=False, lineno=0, ds=True
+):
+    all_indels = []
     for read in grouped_reads:
         parsed_read = AlignedRead(read)
         large_indels_one_read = parsed_read.get_indels(
-            min_mapq=min_mapq,
-            min_len=min_indel_len,
-            dbg=verbose,
-            lineno=lineno,
-            ds=ds
+            min_mapq=min_mapq, min_len=min_indel_len, dbg=verbose, lineno=lineno, ds=ds
         )
-    return large_indels_one_read, all_breaks
+        all_indels += large_indels_one_read
+
+    if len(grouped_reads) > 1:
+        all_breaks = call_breakpoints(grouped_reads)
+    else:
+        all_breaks = []
+    return GroupedResults(all_indels, all_breaks)
 
 
 class GafParser(object):
     """Gaf file parser"""
 
-    def __init__(self, gaf_paths: list[str], 
-                 output: str, 
-                 assembly: str, 
-                 vntr: Optional[str] = None, 
-                 cent: Optional[str] = None,
-                 l1: Optional[str] = None) -> None:
+    def __init__(
+        self,
+        gaf_paths: list[str],
+        output: str,
+        assembly: str,
+        vntr: Optional[str] = None,
+        cent: Optional[str] = None,
+        l1: Optional[str] = None,
+    ) -> None:
         """
         parameters
         ------------
@@ -96,31 +97,35 @@ class GafParser(object):
         min_map_len: int = 2000,
         verbose: bool = False,
         n_cpus: int = 4,
-        ds: bool = True
+        ds: bool = True,
     ) -> None:
         self.ds = ds
 
         if os.path.exists(f"{self.output}.bed.gz"):
-           return
+            return
 
         if len(self.gaf_paths) == 1:
-            read_tags = ["sample"]
+            read_tags = [""]
         elif len(self.gaf_paths) == 2:
             read_tags = ["tumor", "normal"]
 
         lineno = 0
         indel_output = gzip.open(f"{self.output}_indel.bed.gz", "wt")
         breakpoint_output = gzip.open(f"{self.output}_brk.bed.gz", "wt")
-        all_breaks = [] 
+        all_breaks = []
         for gaf_path, read_tag in zip(self.gaf_paths, read_tags):
             print(gaf_path, read_tag)
             if n_cpus == 1:
-                for grouped_reads in load_gaf_to_grouped_reads(gaf_path, min_mapq, min_map_len):
+                for grouped_reads in load_gaf_to_grouped_reads(
+                    gaf_path, min_mapq, min_map_len
+                ):
                     if len(grouped_reads) > 1:
-                        brks = call_breakpoints(grouped_reads) 
+                        brks = call_breakpoints(grouped_reads)
                         for brk in brks:
-                            brk[6] = f"{read_tag}_{brk[6]}"
-                            all_breaks.append(brk) 
+                            brk[6] = (
+                                f"{read_tag}_{brk[6]}" if read_tag != "" else brk[6]
+                            )
+                            all_breaks.append(brk)
                             brk_row_str = "\t".join(map(str, brk))
                             breakpoint_output.write(f"{brk_row_str}\n")
                     for read in grouped_reads:
@@ -131,10 +136,12 @@ class GafParser(object):
                             min_len=min_indel_len,
                             dbg=verbose,
                             lineno=lineno,
-                            ds=ds
+                            ds=ds,
                         )
                         for indel in large_indels_one_read:
-                            indel[3] = f"{read_tag}_{indel[3]}"
+                            indel[3] = (
+                                f"{read_tag}_{indel[3]}" if read_tag != "" else indel[3]
+                            )
                             indel_row_str = "\t".join(map(str, indel))
                             indel_output.write(f"{indel_row_str}\n")
                 indel_output.close()
@@ -142,14 +149,27 @@ class GafParser(object):
             else:
                 fin = load_gaf_to_grouped_reads(gaf_path, min_mapq, min_map_len)
                 with Pool(n_cpus) as pool:
-                    parser = functools.partial(parse_grouped_reads, ds=ds, min_mapq=min_mapq, min_indel_len=min_indel_len, verbose=verbose)
-                    for (indel_results, brk_results) in pool.imap(parser, fin, chunksize=1):
+                    parser = functools.partial(
+                        parse_grouped_reads,
+                        ds=ds,
+                        min_mapq=min_mapq,
+                        min_indel_len=min_indel_len,
+                        verbose=verbose,
+                    )
+                    for group_results in pool.imap(parser, fin, chunksize=300000):
+                        indel_results = group_results.indels
                         for indel in indel_results:
-                            indel[3] = f"{read_tag}_{indel[3]}"
+                            indel[3] = (
+                                f"{read_tag}_{indel[3]}" if read_tag != "" else indel[3]
+                            )
                             indel_row_str = "\t".join(map(str, indel))
                             indel_output.write(f"{indel_row_str}\n")
+
+                        brk_results = group_results.breakpoints
                         for brk in brk_results:
-                            brk[6] = f"{read_tag}_{brk[6]}"
+                            brk[6] = (
+                                f"{read_tag}_{brk[6]}" if read_tag != "" else brk[6]
+                            )
                             all_breaks.append(brk)
                             brk_row_str = "\t".join(map(str, brk))
                             breakpoint_output.write(f"{brk_row_str}\n")
@@ -159,7 +179,7 @@ class GafParser(object):
 
     def merge_breakpts(self, all_breaks):
         break_merged_file = gzip.open(f"{self.output}_mergedbreaks.bed.gz", "wt")
-        break_merged_file.write('\n'.join(merge_breaks(all_breaks)))
+        break_merged_file.write("\n".join(merge_breaks(all_breaks)))
         break_merged_file.close()
 
     def parse_indel(
@@ -168,19 +188,19 @@ class GafParser(object):
         min_len: int = 100,
         verbose: bool = False,
         n_cpus: int = 4,
-        ds: bool = True
+        ds: bool = True,
     ) -> None:
         self.ds = ds
 
         lineno = 0
 
-        if os.path.exists(f"{self.output}.bed.gz"):
-           return
+        # if os.path.exists(f"{self.output}.bed.gz"):
+        #    return
 
-        output = gzip.open(f"{self.output}.bed.gz", "wt")
+        output = gzip.open(f"{self.output}_indel.bed.gz", "wt")
 
         if len(self.gaf_paths) == 1:
-            read_tags = ["sample"]
+            read_tags = [""]
         elif len(self.gaf_paths) == 2:
             read_tags = ["tumor", "normal"]
 
@@ -197,15 +217,19 @@ class GafParser(object):
                             min_len=min_len,
                             dbg=verbose,
                             lineno=lineno,
-                            ds=ds
+                            ds=ds,
                         )
                         for indel in large_indels_one_read:
-                            indel[3] = f"{read_tag}_{indel[3]}"
+                            indel[3] = (
+                                f"{read_tag}_{indel[3]}" if read_tag != "" else indel[3]
+                            )
                             indel_row_str = "\t".join(map(str, indel))
                             output.write(f"{indel_row_str}\n")
                 else:
                     with Pool(n_cpus) as pool:
-                        parser = functools.partial(parse_one_line, ds=ds, min_mapq=min_mapq, min_len=min_len)
+                        parser = functools.partial(
+                            parse_one_line, ds=ds, min_mapq=min_mapq, min_len=min_len
+                        )
                         for result in pool.imap(parser, fin, chunksize=10000):
                             for indel in result:
                                 output.write(
@@ -226,10 +250,15 @@ class GafParser(object):
         hdr.append(f'##fileDate="{formatted_time}"')
         # remove lengths for both hg38 and chm13
 
-        #chm13graph,chm13linear,grch37graph,grch37linear,grch38graph,grch38linear
-        if self.assembly in ["chm13graph", "chm13linear", "grch38graph", "grch38linear"]:
+        # chm13graph,chm13linear,grch37graph,grch37linear,grch38graph,grch38linear
+        if self.assembly in [
+            "chm13graph",
+            "chm13linear",
+            "grch38graph",
+            "grch38linear",
+        ]:
             hdr.append(
-            """##contig=<ID=chr1>
+                """##contig=<ID=chr1>
 ##contig=<ID=chr2>
 ##contig=<ID=chr3>
 ##contig=<ID=chr4>
@@ -254,10 +283,10 @@ class GafParser(object):
 ##contig=<ID=chrX>
 ##contig=<ID=chrY>
 ##contig=<ID=chrM>"""
-        )
-        elif self.assembly in ['grch37graph','grch37linear']:
+            )
+        elif self.assembly in ["grch37graph", "grch37linear"]:
             hdr.append(
-            """##contig=<ID=1>
+                """##contig=<ID=1>
 ##contig=<ID=2>
 ##contig=<ID=3>
 ##contig=<ID=4>
@@ -282,7 +311,7 @@ class GafParser(object):
 ##contig=<ID=X>
 ##contig=<ID=Y>
 ##contig=<ID=MT>"""
-)
+            )
 
         hdr.append(
             """##ALT=<ID=INS,Description="Insertion">
@@ -342,7 +371,9 @@ class GafParser(object):
             indel_num = 0
             for line in merge_indel_file:
                 line = line.strip().split("\t")
-                if not (re.match(r"^[><HNC]", line[0]) or "#" in line[0] or "_" in line[0]):  # remove non-linear genome
+                if not (
+                    re.match(r"^[><HNC]", line[0]) or "#" in line[0] or "_" in line[0]
+                ):  # remove non-linear genome
                     type = "INS" if int(line[3]) > 0 else "DEL"
                     start = int(line[1]) + 1
                     end = int(line[2])
@@ -370,7 +401,7 @@ class GafParser(object):
         vcf_output.close()
 
     def parse_bed(self, bed) -> dict:
-        bed_dict: dict[Any, Any] = {}
+        bed_dict: dict[Any, Any] = {}  # type: ignore
         with open(bed) as bed_file:
             for line in bed_file:
                 line = line.strip().split()
@@ -391,7 +422,7 @@ class GafParser(object):
         win_size: int = 100,
         max_diff: float = 0.05,
     ):
-        """ Merge the similar indels 
+        """Merge the similar indels
 
         If the two indel overlap and have the same type and similar length, then merge together
         """
@@ -400,7 +431,7 @@ class GafParser(object):
             minimap2 = mp.Aligner(self.l1)
             if not minimap2:
                 raise Exception("Error: failed to load/build index")
-        
+
         if self.vntr is not None:
             vntr_sites_dict = self.parse_bed(self.vntr)
         if self.cent is not None:
@@ -421,7 +452,7 @@ class GafParser(object):
                 length += t[6][i]
                 mapq += t[7][i]
 
-                if self.ds: # gaf file
+                if self.ds:  # gaf file
                     tsd_length += t[8][i]
                     polyA_length += t[9][i]
 
@@ -433,7 +464,7 @@ class GafParser(object):
 
             indel_seq = "."
             # TODO: calculate concensus sequence in the next version
-            if self.ds: # gaf file, pick a arbitrary sequence
+            if self.ds:  # gaf file, pick a arbitrary sequence
                 indel_seq = t[10][0]
 
             mapq = math.floor(mapq / n + 0.499)
@@ -466,20 +497,20 @@ class GafParser(object):
                     cent_hit = len(cent_sites_dict[ctg].overlap(t[0], t[1])) > 0
 
             if self.l1 is not None:
-                if length > 0: # only apply to insertion for L1 
+                if length > 0:  # only apply to insertion for L1
                     hits = minimap2.map(indel_seq)
                     hits_list = []
                     for hit in hits:
-                        hits_list.append((hit.ctg, hit.mlen/hit.ctg_len))
+                        hits_list.append((hit.ctg, hit.mlen / hit.ctg_len))
                     hits_list.sort(key=lambda x: x[-1])
                     if len(hits_list) == 0:
-                        best_hit=[".", 0]
+                        best_hit = [".", 0]
                     else:
                         best_hit = hits_list[-1]
                 else:
-                    best_hit=[".", 0]
+                    best_hit = [".", 0]
             else:
-                best_hit=[".", 0]
+                best_hit = [".", 0]
 
             output_str = "\t".join(
                 map(
@@ -525,7 +556,7 @@ class GafParser(object):
         # iterate through contig
         for ctg in merged_indel_dict:
             # key: contig, value:[start, end, read_name, mapq, strand, indel length, tsd length, polyA length, indel seq]
-            # sort indels by start, end, indel length, and strand, read name 
+            # sort indels by start, end, indel length, and strand, read name
             # this will fix the merge indel issue
             merged_indel_dict[ctg].sort(key=lambda x: (x[0], x[1], x[5], x[4], x[2]))
 
@@ -563,7 +594,7 @@ class GafParser(object):
                     bj = b[j]
 
                     if bj[5] * ai[5] <= 0:
-                        # bj and ai are not the same SV type, 
+                        # bj and ai are not the same SV type,
                         # deletion cannot merge with insertion
                         # it is not break here...
                         # continue to compare with next candidate merged indel
@@ -600,7 +631,7 @@ class GafParser(object):
                     # mapq
                     bj[7].append(ai[3])
 
-                    if self.ds: # gaf file
+                    if self.ds:  # gaf file
                         # tsd length
                         bj[8].append(ai[6])
                         # polyA length
@@ -609,7 +640,7 @@ class GafParser(object):
                         bj[10].append(ai[6])
                         # read name
                         bj[11].append(f"{ai[4]}{ai[2]}")
-                    else: # paf file
+                    else:  # paf file
                         bj[8].append(f"{ai[4]}{ai[2]}")
 
                     # reassign the end point
@@ -628,15 +659,19 @@ class GafParser(object):
                 if merge_j < 0:
                     # ai: [start, end, read_name, mapq, strand, indel length, tsd length, polyA length, indel seq]
                     # bj: [start, end, ., mapq, ., indel length, [indel length], [mapq], [tsd length], [polyA length], [indel seq], [strandreadname]]
-                    if self.ds: # gaf file with indel seq
+                    if self.ds:  # gaf file with indel seq
                         b.append(
                             [
                                 ai[0],
-                                ai[1], # always the most recent/largest coordinate indel
+                                ai[
+                                    1
+                                ],  # always the most recent/largest coordinate indel
                                 ".",
                                 ai[3],
                                 ".",
-                                ai[5], # NOTED issue: only a constant first indel length is used for max diff compute
+                                ai[
+                                    5
+                                ],  # NOTED issue: only a constant first indel length is used for max diff compute
                                 [ai[5]],
                                 [ai[3]],
                                 [ai[6]],
@@ -645,7 +680,7 @@ class GafParser(object):
                                 [f"{ai[4]}{ai[2]}"],
                             ]
                         )
-                    else: # paf file
+                    else:  # paf file
                         # paf output from minimap2 do not have ai[6-8]: tsd, polyA, indel seq yet
                         # ai [start, end, readname, mapq, strand, indel length]
                         # bj [start, end, ., mapq, ., indel length, [indel length], [mapq], [strandreadname]]
@@ -662,7 +697,7 @@ class GafParser(object):
                                 [f"{ai[4]}{ai[2]}"],
                             ]
                         )
-                    
+
             # output indel that are skipped in the merging for loop
             while len(b) > 0:
                 t = b.pop(0)

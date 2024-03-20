@@ -1,8 +1,5 @@
-import sys
-import numpy as np 
 import argparse
-
-
+import numpy as np
 
 
 #funciton that takes a cluster of breakpoints within the margin to merge into one line

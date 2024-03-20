@@ -4,7 +4,7 @@ RUN apt-get -qq update && apt-get -qq -y install \
     automake \
     curl \
     build-essential \
-    zlib1g-dev 
+    zlib1g-dev
 
 ENV SRC=/usr/local/src
 ENV BIN=/usr/local/bin

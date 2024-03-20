@@ -178,9 +178,74 @@ class GafParser(object):
         return all_breaks
 
     def merge_breakpts(self, all_breaks):
+        """
+        Merge the similar breakpoints
+
+        all_breaks: list of breakpoints, each element is a string
+
+        We append the centromere and VNTR to the end of the merged breakpoints file
+        """
         self.breakpt_file = f"{self.output}_mergedbreaks.bed.gz"
         break_merged_file = gzip.open(f"{self.output}_mergedbreaks.bed.gz", "wt")
-        break_merged_file.write("\n".join(merge_breaks(all_breaks)))
+
+        merged_breakpt_str_list = merge_breaks(all_breaks)
+        merged_breakpt_str_list_with_annotation = []
+
+        for breakpt in merged_breakpt_str_list:
+            breakpt = breakpt.split("\t")
+            ctg = breakpt[0]
+            start = int(breakpt[1])
+            ctg2 = breakpt[3]
+            start2 = breakpt[4]
+
+            cent_hit = False
+            vntr_hit = False
+            cent_hit2 = False
+            vntr_hit2 = False
+            cent_dist = ""
+            if self.vntr is not None:
+                if ctg in self.vntr_sites_dict:
+                    vntr_hit = (
+                        len(self.vntr_sites_dict[ctg].overlap(start, start + 1)) > 0
+                    )
+                else:
+                    vntr_hit = "N/A"
+
+                if ctg2 in self.vntr_sites_dict:
+                    vntr_hit2 = (
+                        len(self.vntr_sites_dict[ctg2].overlap(start2, start2 + 1)) > 0
+                    )
+                else:
+                    vntr_hit2 = "N/A"
+            else:
+                vntr_hit, vntr_hit2 = False, False
+
+            if self.cent is not None:
+                if ctg in self.cent_sites_dict:
+                    cent_hit = (
+                        len(self.cent_sites_dict[ctg].overlap(start, start + 1)) > 0
+                    )
+                else:
+                    cent_hit = "N/A"
+
+                if ctg2 in self.cent_sites_dict:
+                    cent_hit2 = (
+                        len(self.cent_sites_dict[ctg2].overlap(start2, start2 + 1)) > 0
+                    )
+                else:
+                    cent_hit2 = "N/A"
+
+                # measure the distance between indel middle point and centromere
+                cent_dist_start = self.get_dist_to_cen(ctg, start)
+                cent_dist_end = self.get_dist_to_cen(ctg2, start2)
+                cent_dist = f"{cent_dist_start},{cent_dist_end}"
+            else:
+                cent_dist = "N/A"
+
+            breakpt[6] = f"{cent_hit},{vntr_hit},{cent_hit2},{vntr_hit2},{cent_dist}"
+            merged_breakpt_str_list_with_annotation.append("\t".join(breakpt))
+
+        break_merged_file.write("\n".join(merged_breakpt_str_list_with_annotation))
         break_merged_file.close()
 
     def parse_indel(
@@ -401,20 +466,55 @@ class GafParser(object):
                     indel_num += 1
         vcf_output.close()
 
-    def parse_bed(self, bed) -> dict:
+    def parse_tree_bed(self, bed, window_size=10) -> dict:
         bed_dict: dict[Any, Any] = {}  # type: ignore
+        extension = window_size // 2
         with open(bed) as bed_file:
             for line in bed_file:
                 line = line.strip().split()
                 if line[0] not in bed_dict:
                     bed_dict[line[0]] = intervaltree.IntervalTree()
                 bed_dict[line[0]].add(
-                    Interval(
-                        int(line[1]),
-                        int(line[2]),
-                    )
+                    Interval(int(line[1]) - extension, int(line[2]) + extension)
                 )
         return bed_dict
+
+    def parse_linear_bed(self):
+        centromeres = {}
+
+        if "grch37" in self.assembly:
+            # NOTE: no centromere annotation available
+            return centromeres
+
+        if self.cent is not None:
+            with open(self.cent, "r") as f:
+                for line in f:
+                    s = line.strip().split("\t")
+                    if s[0] in centromeres:
+                        centromeres[s[0]][0].append(int(s[1]))
+                        centromeres[s[0]][1].append(int(s[2]))
+                    else:
+                        centromeres[s[0]] = [[int(s[1])], [int(s[2])]]
+            for key in centromeres:
+                # start pos of centromere
+                centromeres[key][0] = min(centromeres[key][0])
+                # end pos of centromere
+                centromeres[key][1] = max(centromeres[key][1])
+
+        return centromeres
+
+    def get_dist_to_cen(self, chrom, loc):
+        """chrom: breakpoints chromomosome, loc: breakpoints"""
+        if chrom not in self.cent_sites_linear_dict.keys():
+            return "N/A"
+
+        cen_locs = self.cent_sites_linear_dict[chrom]
+        dist = 0
+        if loc < min(cen_locs):
+            dist = min(cen_locs) - loc
+        elif loc > max(cen_locs):
+            dist = loc - max(cen_locs)
+        return str(dist)
 
     def merge_indel(
         self,
@@ -434,9 +534,10 @@ class GafParser(object):
                 raise Exception("Error: failed to load/build index")
 
         if self.vntr is not None:
-            vntr_sites_dict = self.parse_bed(self.vntr)
+            self.vntr_sites_dict = self.parse_tree_bed(self.vntr)
         if self.cent is not None:
-            cent_sites_dict = self.parse_bed(self.cent)
+            self.cent_sites_dict = self.parse_tree_bed(self.cent)
+            self.cent_sites_linear_dict = self.parse_linear_bed()
 
         self.indel_file = f"{self.output}_mergedindel.bed.gz"
         merged_output = gzip.open(f"{self.output}_mergedindel.bed.gz", "wt")
@@ -492,11 +593,22 @@ class GafParser(object):
             cent_hit = False
             vntr_hit = False
             if self.vntr is not None:
-                if ctg in vntr_sites_dict:
-                    vntr_hit = len(vntr_sites_dict[ctg].overlap(t[0], t[1])) > 0
+                if ctg in self.vntr_sites_dict:
+                    vntr_hit = len(self.vntr_sites_dict[ctg].overlap(t[0], t[1])) > 0
+                else:
+                    vntr_hit = "N/A"
+            cent_dist = ""
             if self.cent is not None:
-                if ctg in cent_sites_dict:
-                    cent_hit = len(cent_sites_dict[ctg].overlap(t[0], t[1])) > 0
+                if ctg in self.cent_sites_dict:
+                    cent_hit = len(self.cent_sites_dict[ctg].overlap(t[0], t[1])) > 0
+                else:
+                    cent_hit = "N/A"
+                # measure the distance between indel middle point and centromere
+                cent_dist_start = self.get_dist_to_cen(ctg, t[0])
+                cent_dist_end = self.get_dist_to_cen(ctg, t[1])
+                cent_dist = f"{cent_dist_start},{cent_dist_end}"
+            else:
+                cent_dist = "N/A"
 
             if self.l1 is not None:
                 if length > 0:  # only apply to insertion for L1
@@ -534,6 +646,7 @@ class GafParser(object):
                         cent_hit,
                         f"{best_hit[0]}:{best_hit[1]}",
                         f"rd:Z:{','.join(t[-1])}",  # +/-readname
+                        cent_dist,
                     ],
                 )
             )

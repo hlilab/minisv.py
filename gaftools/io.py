@@ -93,6 +93,9 @@ def merge_indel_breakpoints(prefix, break_point_file, indel_file):
         "L1_hits",
         "read_names",
         "sv_type",
+        "strandness",
+        "VNTR_dist",
+        "Centromere_dist",
     ]
     breakpoints_indexes = [
         0,
@@ -114,8 +117,34 @@ def merge_indel_breakpoints(prefix, break_point_file, indel_file):
         -1,
         -1,
         6,
+        2,
+        -1,
+        -1,
     ]
-    indel_indexes = [0, 1, 2, -1, -1, -1, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15]
+    indel_indexes = [
+        0,
+        1,
+        2,
+        -1,
+        -1,
+        -1,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10,
+        11,
+        12,
+        13,
+        14,
+        15,
+        -1,
+        -1,
+        -1,
+    ]
 
     harmonized_output = gzip.open(f"{prefix}_harmonized.bed.gz", "wt")
     harmonized_output.write("\t".join(col_names) + "\n")
@@ -155,19 +184,8 @@ if __name__ == "__main__":
         if len(group) > 1:
             brks = call_breakpoints(group)
             for brk in brks:
-
-              all_breaks.append(brk)  
+                all_breaks.append(brk)  
 
     bnd_bed, bnd_vcf = merge_breaks(lines, 100, 5)
     #sys.stdout.write('\n'.join(bnd_bed))
     sys.stdout.write('\n'.join(bnd_vcf))
-   
-        
-
-
-
-
-
-
-
-

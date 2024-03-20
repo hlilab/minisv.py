@@ -1,63 +1,137 @@
 import argparse
+import sys
+
 import numpy as np
 import sys
 
-#function that takes a cluster of breakpoints within the margin to merge into one line
-def get_merges(cluster,min_support): 
-    if len(cluster) < min_support: 
-        return None 
-    #convert clsuer into array
-    arr = np.array(cluster)    
-    #take break point locations to be the median of the locations in the cluster of reads
-    start_val = round(np.median([int(i) for i in arr[:,1]]))
-    end_val = round(np.median([int(i) for i in arr[:,4]])) 
-    return '\t'.join([arr[0,0], str(start_val), arr[0,2], arr[0,3], str(end_val), ','.join(arr[:,5]), ','.join(arr[:,6])]) 
-   
-#convert the breakpoint text format into vcf format 
-def vcf_format(original, number): 
-    out = [] 
-    s = original.strip().split('\t')
-    qual = str(round(np.mean([int(x) for x in s[5].split(',')])))
-    read_count = str(len(s[5].split(',')))
-    info = ';READ_COUNTS='+ read_count + ';READ_IDS=' + s[6]
-    if s[2] == '>>':
-        out.append('\t'.join([s[0],s[1],'bnd_' + str(number), 'N', 'N[' + s[3]+':'+ s[4]+'[', qual, '.', 'SVTYPE=BND;MATEID=bnd_'+ str(number+1)  + info]))
-        out.append('\t'.join([s[3],s[4],'bnd_' + str(number+1), 'N', ']' + s[0]+':'+ s[1]+']N', qual, '.', 'SVTYPE=BND;MATEID=bnd_'+ str(number)  + info]))
+
+# funciton that takes a cluster of breakpoints within the margin to merge into one line
+def get_merges(cluster, min_support):
+    if len(cluster) < min_support:
+        return None
+    # convert clsuer into array
+    arr = np.array(cluster)
+    # take break point locations to be the median of the locations in the cluster of reads
+    start_val = round(np.median([int(i) for i in arr[:, 1]]))
+    end_val = round(np.median([int(i) for i in arr[:, 4]]))
+    return "\t".join(
+        [
+            arr[0, 0],
+            str(start_val),
+            arr[0, 2],
+            arr[0, 3],
+            str(end_val),
+            ",".join(arr[:, 5]),
+            ",".join(arr[:, 6]),
+        ]
+    )
+
+
+# convert the breakpoint text format into vcf format
+def vcf_format(original, number):
+    out = []
+    s = original.strip().split("\t")
+    qual = str(round(np.mean([int(x) for x in s[5].split(",")])))
+    read_count = str(len(s[5].split(";")))
+    info = ";READ_COUNTS=" + read_count + ";READ_IDS=" + s[6]
+    if s[2] == ">>":
+        out.append(
+            "\t".join(
+                [
+                    s[0],
+                    s[1],
+                    "bnd_" + str(number),
+                    "N",
+                    "N[" + s[3] + ":" + s[4] + "[",
+                    qual,
+                    ".",
+                    "SVTYPE=BND;MATEID=bnd_" + str(number + 1) + info,
+                ]
+            )
+        )
+        out.append(
+            "\t".join(
+                [
+                    s[3],
+                    s[4],
+                    "bnd_" + str(number + 1),
+                    "N",
+                    "]" + s[0] + ":" + s[1] + "]N",
+                    qual,
+                    ".",
+                    "SVTYPE=BND;MATEID=bnd_" + str(number) + info,
+                ]
+            )
+        )
     else:
-        out.append('\t'.join([s[0],s[1],'bnd_' + str(number), 'N', 'N]' + s[3]+':'+ s[4]+']', qual, '.', 'SVTYPE=BND;MATEID=bnd_'+ str(number+1) + info])) 
-        out.append('\t'.join([s[3],s[4],'bnd_' + str(number+1), 'N', '[' + s[0]+':'+ s[1]+'[N', qual, '.', 'SVTYPE=BND;MATEID=bnd_'+ str(number) + info]))
+        out.append(
+            "\t".join(
+                [
+                    s[0],
+                    s[1],
+                    "bnd_" + str(number),
+                    "N",
+                    "N]" + s[3] + ":" + s[4] + "]",
+                    qual,
+                    ".",
+                    "SVTYPE=BND;MATEID=bnd_" + str(number + 1) + info,
+                ]
+            )
+        )
+        out.append(
+            "\t".join(
+                [
+                    s[3],
+                    s[4],
+                    "bnd_" + str(number + 1),
+                    "N",
+                    "[" + s[0] + ":" + s[1] + "[N",
+                    qual,
+                    ".",
+                    "SVTYPE=BND;MATEID=bnd_" + str(number) + info,
+                ]
+            )
+        )
     return out
 
-#function to sort the b2 locations for merge clustering
-def identify_diff_breaks(group, margin): 
-    
-    sorted_group = sorted(group, key = lambda x: (int(x[4])))
-    i = 0 
-    groups = [] 
-    while i < len(sorted_group): 
-        j = 0 
-        while i+j+1 < len(sorted_group) and abs(int(sorted_group[i+j][4]) - int(sorted_group[i+j+1][4])) <= margin: 
-            j +=1
-        groups.append(sorted_group[i:i+j+1]) 
-        i+= (j+1)
-    return groups 
 
-def merge_breaks(breakpoints, margin=100, support=2): 
-    all_merges= [] 
-    all_vcfs = ['##fileformat=VCFv4.2\n#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO'] 
-    #sort lines  
-    #sorted_lines = sorted(breakpoints, key = lambda x: (x[0],x[3], int(x[1]), int(x[4]))) 
-    #group B1s within margin and same chr on B2 
-    sorted_lines = sorted(breakpoints, key = lambda x: (x[0],x[3], int(x[1]))) 
-    i = 0 
-    n =1
-    #group breakpoints to merge 
-    while i < len(sorted_lines): 
-        j = 0 
-        while i+j+1 < len(sorted_lines) and sorted_lines[i+j][0] == sorted_lines[i+j+1][0] and abs(int(sorted_lines[i+j][1]) - int(sorted_lines[i+j+1][1])) <= margin and sorted_lines[i+j][3] == sorted_lines[i+j+1][3]: 
-            j +=1
-            
-        groupings = identify_diff_breaks(sorted_lines[i:i+j+1], margin) 
+def identify_diff_breaks(group, margin):
+    sorted_group = sorted(group, key=lambda x: (int(x[4])))
+    i = 0
+    groups = []
+    while i < len(sorted_group):
+        j = 0
+        while (
+            i + j + 1 < len(sorted_group)
+            and abs(int(sorted_group[i + j][4]) - int(sorted_group[i + j + 1][4]))
+            <= margin
+        ):
+            j += 1
+        groups.append(sorted_group[i : i + j + 1])
+        i += j + 1
+    return groups
+
+
+def merge_breaks(breakpoints, margin=100, support=2):
+    all_merges = []
+    # all_vcfs = ['##fileformat=VCFv4.2\n#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO']
+    # sort lines
+    # sorted_lines = sorted(breakpoints, key = lambda x: (x[0],x[3], int(x[1]), int(x[4])))
+    sorted_lines = sorted(breakpoints, key=lambda x: (x[0], x[3], int(x[1])))
+    i = 0
+    # group breakpoints to merge
+    while i < len(sorted_lines):
+        j = 0
+        while (
+            i + j + 1 < len(sorted_lines)
+            and sorted_lines[i + j][0] == sorted_lines[i + j + 1][0]
+            and abs(int(sorted_lines[i + j][1]) - int(sorted_lines[i + j + 1][1]))
+            <= margin
+            and sorted_lines[i + j][3] == sorted_lines[i + j + 1][3]
+        ):
+            j += 1
+
+        groupings = identify_diff_breaks(sorted_lines[i : i + j + 1], margin)
         for group in groupings:
             out = get_merges(group, support)
             if out:
@@ -68,38 +142,51 @@ def merge_breaks(breakpoints, margin=100, support=2):
                 n += 2
         i += (j+ 1)  
     return all_merges, all_vcfs 
- 
-#with open(outPref + '.vcf','w') as final_vcf: 
-        #final_vcf.write('\n'.join(all_vcfs)) 
 
-    #with open(outPref + '.txt','w') as final_breaks: 
-     #   final_breaks.write('\n'.join(all_merges)) 
+# with open(outPref + '.vcf','w') as final_vcf:
+# final_vcf.write('\n'.join(all_vcfs))
 
-#print(all_vcfs)
-#sys.stdout.write('\n'.join(all_merges)) 
+# with open(outPref + '.txt','w') as final_breaks:
+#   final_breaks.write('\n'.join(all_merges))
 
-if __name__ == "__main__": 
-    parser = argparse.ArgumentParser(description='Identify Break Points from GAF input')
-    parser.add_argument('-i', metavar='<breakpoints.txt>', required=True, help='input GAF file')
-    parser.add_argument('-w', metavar= '--merge_window', required= False, type=int, default = 100, help = 'Size of window to merge break points in')
-    parser.add_argument('-s', metavar= '--min_support', required= False, type=int, default = 2, help = 'minimum reads supporting breakpoint')
-    
-    #parser.add_argument('-o', metavar='--output', required=True, help='output files header')
+# print(all_vcfs)
+# sys.stdout.write('\n'.join(all_merges))
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description="Identify Break Points from GAF input")
+    parser.add_argument(
+        "-i", metavar="<breakpoints.txt>", required=True, help="input GAF file"
+    )
+    parser.add_argument(
+        "-w",
+        metavar="--merge_window",
+        required=False,
+        type=int,
+        default=100,
+        help="Size of window to merge break points in",
+    )
+    parser.add_argument(
+        "-s",
+        metavar="--min_support",
+        required=False,
+        type=int,
+        default=2,
+        help="minimum reads supporting breakpoint",
+    )
+
+    # parser.add_argument('-o', metavar='--output', required=True, help='output files header')
 
     args = parser.parse_args()
     brkFile = args.i
     margin = args.w
     min_support = args.s
-    #outPref =args.o
-   
-    lines = [] 
-    with open(brkFile, 'r') as f:
+    # outPref =args.o
+
+    lines = []
+    with open(brkFile, "r") as f:
         for line in f:
             lines.append(line.strip().split('\t'))
-  
     bed, vcf = merge_breaks(lines, margin, min_support) 
     #sys.stdout.write('\n'.join(bed))  
     sys.stdout.write('\n'.join(vcf)) 
-
-
 

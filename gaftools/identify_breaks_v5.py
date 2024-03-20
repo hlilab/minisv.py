@@ -2,7 +2,7 @@ import argparse
 
 
 # function to read in file and sort by read id
-def load_gaf_for_breakpoints(gafFile, min_mapQ=10, min_map_len=2000):
+def load_gaf_for_breakpoints(gafFile, min_mapQ=5, min_map_len=2000):
     # read in lines and split into feilds
     lines = []
     # dont read in lines that are below mapping Q or min map length
@@ -145,8 +145,8 @@ def adj_graph_paths(original):
 # sys.stdout.write('\n'.join(output))
 
 
-def call_breakpoints(read_cluster, min_mapQ=10, min_map_len=2000):
-    # sorted_lines = load_gaf_for_breakpoints(gafFile, min_mapQ=10, min_map_len=2000)
+def call_breakpoints(read_cluster, min_mapQ=5, min_map_len=2000):
+    # sorted_lines = load_gaf_for_breakpoints(gafFile, min_mapQ=5, min_map_len=2000)
     output = []
     for i in range(1, len(read_cluster)):
         breaks = find_break(read_cluster[i - 1], read_cluster[i])
@@ -165,7 +165,7 @@ if __name__ == "__main__":
         metavar="--min_mapping_quality",
         required=False,
         type=int,
-        default=10,
+        default=5,
         help="Minimum mapping quality (integer)",
     )
     parser.add_argument(

@@ -178,6 +178,7 @@ class GafParser(object):
         return all_breaks
 
     def merge_breakpts(self, all_breaks):
+        self.breakpt_file = f"{self.output}_mergedbreaks.bed.gz"
         break_merged_file = gzip.open(f"{self.output}_mergedbreaks.bed.gz", "wt")
         break_merged_file.write("\n".join(merge_breaks(all_breaks)))
         break_merged_file.close()
@@ -437,6 +438,7 @@ class GafParser(object):
         if self.cent is not None:
             cent_sites_dict = self.parse_bed(self.cent)
 
+        self.indel_file = f"{self.output}_mergedindel.bed.gz"
         merged_output = gzip.open(f"{self.output}_mergedindel.bed.gz", "wt")
 
         def print_bed(ctg, t):

@@ -2,6 +2,7 @@
 We could put the output interface into this submodule as well.
 """
 import argparse
+import gzip
 import sys
 from dataclasses import dataclass
 
@@ -58,6 +59,89 @@ def load_gaf_to_grouped_reads(gafFile, min_mapQ=5, min_map_len=2000):
     yield sorted_lines
     del lines
     del sorted_lines
+
+
+def merge_indel_breakpoints(prefix, break_point_file, indel_file):
+    """
+    Merge indel and breakpoint files into a single file.
+
+    Args:
+    - break_point_file (str): Path to the breakpoint file.
+    - indel_file (str): Path to the indel file.
+
+    Returns:
+    - merged_file (str): Path to the merged file.
+    """
+    col_names = [
+        "#chrom_contig1",
+        "start1",
+        "end1",
+        "chrom_contig2",
+        "start2",
+        "end2",
+        "indel_length",
+        "tsd_length",
+        "polyA_length",
+        "indel_seq",
+        "read_counts",
+        "dot",
+        "average_mapquality",
+        "forward_strand_counts",
+        "reverse_strand_counts",
+        "VNTR_hits",
+        "Centromere_hits",
+        "L1_hits",
+        "read_names",
+        "sv_type",
+    ]
+    breakpoints_indexes = [
+        0,
+        1,
+        -1,
+        3,
+        4,
+        -1,
+        -1,
+        -1,
+        -1,
+        -1,
+        -1,
+        -1,
+        5,
+        -1,
+        -1,
+        -1,
+        -1,
+        -1,
+        6,
+    ]
+    indel_indexes = [0, 1, 2, -1, -1, -1, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15]
+
+    harmonized_output = gzip.open(f"{prefix}_harmonized.bed.gz", "wt")
+    harmonized_output.write("\t".join(col_names) + "\n")
+
+    with gzip.open(break_point_file, "rt") as break_point_file_handler:
+        for line in break_point_file_handler:
+            line = line.strip().split("\t")
+            line = [line[i] if i != -1 else "." for i in breakpoints_indexes]
+            out_str = "\t".join(line)
+            harmonized_output.write(f"{out_str}\tbnd\n")
+
+    with gzip.open(indel_file, "rt") as indel_file_handler:
+        for line in indel_file_handler:
+            line = line.strip().split("\t")
+            line = [line[i] if i != -1 else "." for i in indel_indexes]
+            out_str = "\t".join(line)
+            harmonized_output.write(f"{out_str}\tindel\n")
+
+    harmonized_output.close()
+
+
+def merge_sv_vcf(prefix, indel_vcf, breakpoint_vcf):
+    """Merge indel and breakpoint VCF files into a single file.
+    Args:
+    """
+    return
 
 
 if __name__ == "__main__":

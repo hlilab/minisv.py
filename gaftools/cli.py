@@ -6,6 +6,7 @@ import rich_click as click
 
 from .cygaftools import GafParser as cy_GafParser
 from .gaftools import GafParser
+from .io import merge_indel_breakpoints
 
 
 @click.group(help="Pangenome SV tool commands")
@@ -96,6 +97,8 @@ def getsv(
 
     gafs.merge_indel(min_cnt=support_read, min_mapq=mapq)
     gafs.merge_breakpts(all_breakpts)
+
+    merge_indel_breakpoints(prefix, gafs.breakpt_file, gafs.indel_file)
 
     gafs.bed2vcf(command=command)
     # gafs.bed2breakpoint_vcf(min_cnt=support_read, min_mapq=mapq)

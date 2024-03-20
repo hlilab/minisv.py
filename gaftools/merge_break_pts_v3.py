@@ -1,13 +1,13 @@
 import argparse
 import numpy as np
+import sys
 
-
-#funciton that takes a cluster of breakpoints within the margin to merge into one line
+#function that takes a cluster of breakpoints within the margin to merge into one line
 def get_merges(cluster,min_support): 
     if len(cluster) < min_support: 
         return None 
     #convert clsuer into array
-    arr = np.array(cluster)
+    arr = np.array(cluster)    
     #take break point locations to be the median of the locations in the cluster of reads
     start_val = round(np.median([int(i) for i in arr[:,1]]))
     end_val = round(np.median([int(i) for i in arr[:,4]])) 
@@ -18,7 +18,7 @@ def vcf_format(original, number):
     out = [] 
     s = original.strip().split('\t')
     qual = str(round(np.mean([int(x) for x in s[5].split(',')])))
-    read_count = str(len(s[5].split(';')))
+    read_count = str(len(s[5].split(',')))
     info = ';READ_COUNTS='+ read_count + ';READ_IDS=' + s[6]
     if s[2] == '>>':
         out.append('\t'.join([s[0],s[1],'bnd_' + str(number), 'N', 'N[' + s[3]+':'+ s[4]+'[', qual, '.', 'SVTYPE=BND;MATEID=bnd_'+ str(number+1)  + info]))
@@ -28,6 +28,7 @@ def vcf_format(original, number):
         out.append('\t'.join([s[3],s[4],'bnd_' + str(number+1), 'N', '[' + s[0]+':'+ s[1]+'[N', qual, '.', 'SVTYPE=BND;MATEID=bnd_'+ str(number) + info]))
     return out
 
+#function to sort the b2 locations for merge clustering
 def identify_diff_breaks(group, margin): 
     
     sorted_group = sorted(group, key = lambda x: (int(x[4])))
@@ -43,11 +44,13 @@ def identify_diff_breaks(group, margin):
 
 def merge_breaks(breakpoints, margin=100, support=2): 
     all_merges= [] 
-    #all_vcfs = ['##fileformat=VCFv4.2\n#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO'] 
+    all_vcfs = ['##fileformat=VCFv4.2\n#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO'] 
     #sort lines  
     #sorted_lines = sorted(breakpoints, key = lambda x: (x[0],x[3], int(x[1]), int(x[4]))) 
+    #group B1s within margin and same chr on B2 
     sorted_lines = sorted(breakpoints, key = lambda x: (x[0],x[3], int(x[1]))) 
     i = 0 
+    n =1
     #group breakpoints to merge 
     while i < len(sorted_lines): 
         j = 0 
@@ -59,8 +62,12 @@ def merge_breaks(breakpoints, margin=100, support=2):
             out = get_merges(group, support)
             if out:
                 all_merges.append(out)
-        i += (j + 1)  
-    return all_merges
+                vcf_out = vcf_format(out, n)
+                all_vcfs.append(vcf_out[0])
+                all_vcfs.append(vcf_out[1])
+                n += 2
+        i += (j+ 1)  
+    return all_merges, all_vcfs 
  
 #with open(outPref + '.vcf','w') as final_vcf: 
         #final_vcf.write('\n'.join(all_vcfs)) 
@@ -89,8 +96,10 @@ if __name__ == "__main__":
     with open(brkFile, 'r') as f:
         for line in f:
             lines.append(line.strip().split('\t'))
-   
-    sys.stdout.write('\n'.join(merge_breaks(lines, margin, min_support))) 
+  
+    bed, vcf = merge_breaks(lines, margin, min_support) 
+    #sys.stdout.write('\n'.join(bed))  
+    sys.stdout.write('\n'.join(vcf)) 
 
 
 

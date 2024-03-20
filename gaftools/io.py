@@ -157,7 +157,11 @@ if __name__ == "__main__":
             for brk in brks:
 
               all_breaks.append(brk)  
-    sys.stdout.write('\n'.join(merge_breaks(all_breaks,100,5))) 
+
+    bnd_bed, bnd_vcf = merge_breaks(lines, 100, 5)
+    #sys.stdout.write('\n'.join(bnd_bed))
+    sys.stdout.write('\n'.join(bnd_vcf))
+   
         
 
 

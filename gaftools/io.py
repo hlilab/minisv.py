@@ -117,9 +117,9 @@ def merge_indel_breakpoints(prefix, break_point_file, indel_file):
         -1,
         -1,
         -1,
-        7,
-        2,
         6,
+        2,
+        -1,
     ]
     indel_indexes = [
         0,
@@ -151,7 +151,14 @@ def merge_indel_breakpoints(prefix, break_point_file, indel_file):
     with gzip.open(break_point_file, "rt") as break_point_file_handler:
         for line in break_point_file_handler:
             line = line.strip().split("\t")
+            # centromere/vntr annotation
+            print(line)
+            print(line[-1])
+            cent_hit, cent_hit2, vntr_hit, vntr_hit2, cent_dist = line[-1].split(",")
             line = [line[i] if i != -1 else "." for i in breakpoints_indexes]
+            line[15] = f"{vntr_hit},{vntr_hit2}"
+            line[16] = f"{cent_hit},{cent_hit2}"
+            line[-1] = str(cent_dist)
             out_str = "\t".join(line)
             harmonized_output.write(f"{out_str}\tbnd\n")
 

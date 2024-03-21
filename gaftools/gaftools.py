@@ -238,11 +238,11 @@ class GafParser(object):
                 # measure the distance between indel middle point and centromere
                 cent_dist_start = self.get_dist_to_cen(ctg, start)
                 cent_dist_end = self.get_dist_to_cen(ctg2, start2)
-                cent_dist = f"{cent_dist_start},{cent_dist_end}"
+                cent_dist = f"{cent_dist_start}:{cent_dist_end}"
             else:
                 cent_dist = "N/A"
 
-            breakpt.append(f"{cent_hit},{vntr_hit},{cent_hit2},{vntr_hit2},{cent_dist}")
+            breakpt.append(f"{cent_hit},{cent_hit2},{vntr_hit},{vntr_hit2},{cent_dist}")
             merged_breakpt_str_list_with_annotation.append("\t".join(breakpt))
 
         break_merged_file.write("\n".join(merged_breakpt_str_list_with_annotation))

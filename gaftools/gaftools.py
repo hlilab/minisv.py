@@ -188,7 +188,7 @@ class GafParser(object):
         self.breakpt_file = f"{self.output}_mergedbreaks.bed.gz"
         break_merged_file = gzip.open(f"{self.output}_mergedbreaks.bed.gz", "wt")
 
-        merged_breakpt_str_list = merge_breaks(all_breaks)
+        merged_breakpt_str_list, merged_breakpt_vcf_list = merge_breaks(all_breaks)
         merged_breakpt_str_list_with_annotation = []
 
         for breakpt in merged_breakpt_str_list:
@@ -196,7 +196,7 @@ class GafParser(object):
             ctg = breakpt[0]
             start = int(breakpt[1])
             ctg2 = breakpt[3]
-            start2 = breakpt[4]
+            start2 = int(breakpt[4])
 
             cent_hit = False
             vntr_hit = False
@@ -242,11 +242,12 @@ class GafParser(object):
             else:
                 cent_dist = "N/A"
 
-            breakpt[6] = f"{cent_hit},{vntr_hit},{cent_hit2},{vntr_hit2},{cent_dist}"
+            breakpt.append(f"{cent_hit},{vntr_hit},{cent_hit2},{vntr_hit2},{cent_dist}")
             merged_breakpt_str_list_with_annotation.append("\t".join(breakpt))
 
         break_merged_file.write("\n".join(merged_breakpt_str_list_with_annotation))
         break_merged_file.close()
+        return merged_breakpt_vcf_list
 
     def parse_indel(
         self,
@@ -303,7 +304,7 @@ class GafParser(object):
                                 )
         output.close()
 
-    def bed2vcf(self, command: str = ""):
+    def bed2vcf(self, command: str = "", merged_breakpt_vcf_list=[]):
         """Convert merged indel bed file to a vcf file and index by bgzip and tabix"""
         current_time = datetime.now()
         formatted_time = current_time.strftime("%Y-%m-%d %H:%M:%S")
@@ -597,6 +598,7 @@ class GafParser(object):
                     vntr_hit = len(self.vntr_sites_dict[ctg].overlap(t[0], t[1])) > 0
                 else:
                     vntr_hit = "N/A"
+
             cent_dist = ""
             if self.cent is not None:
                 if ctg in self.cent_sites_dict:

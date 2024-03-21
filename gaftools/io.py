@@ -3,11 +3,13 @@ We could put the output interface into this submodule as well.
 """
 import argparse
 import gzip
-import sys
+
+# import sys
 from dataclasses import dataclass
 
 from gaftools.identify_breaks_v5 import call_breakpoints
-from gaftools.merge_break_pts_v3 import merge_breaks
+
+# from gaftools.merge_break_pts_v3 import merge_breaks
 
 
 @dataclass
@@ -92,10 +94,9 @@ def merge_indel_breakpoints(prefix, break_point_file, indel_file):
         "Centromere_hits",
         "L1_hits",
         "read_names",
-        "sv_type",
         "strandness",
-        "VNTR_dist",
         "Centromere_dist",
+        "sv_type",
     ]
     breakpoints_indexes = [
         0,
@@ -116,10 +117,9 @@ def merge_indel_breakpoints(prefix, break_point_file, indel_file):
         -1,
         -1,
         -1,
-        6,
+        7,
         2,
-        -1,
-        -1,
+        6,
     ]
     indel_indexes = [
         0,
@@ -142,8 +142,7 @@ def merge_indel_breakpoints(prefix, break_point_file, indel_file):
         14,
         15,
         -1,
-        -1,
-        -1,
+        16,
     ]
 
     harmonized_output = gzip.open(f"{prefix}_harmonized.bed.gz", "wt")
@@ -184,8 +183,8 @@ if __name__ == "__main__":
         if len(group) > 1:
             brks = call_breakpoints(group)
             for brk in brks:
-                all_breaks.append(brk)  
+                all_breaks.append(brk)
 
-    bnd_bed, bnd_vcf = merge_breaks(lines, 100, 5)
-    #sys.stdout.write('\n'.join(bnd_bed))
-    sys.stdout.write('\n'.join(bnd_vcf))
+    # bnd_bed, bnd_vcf = merge_breaks(lines, 100, 5)
+    # sys.stdout.write('\n'.join(bnd_bed))
+    # sys.stdout.write("\n".join(bnd_vcf))

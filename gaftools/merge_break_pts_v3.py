@@ -2,7 +2,6 @@ import argparse
 import sys
 
 import numpy as np
-import sys
 
 
 # funciton that takes a cluster of breakpoints within the margin to merge into one line
@@ -114,11 +113,12 @@ def identify_diff_breaks(group, margin):
 
 def merge_breaks(breakpoints, margin=100, support=2):
     all_merges = []
-    # all_vcfs = ['##fileformat=VCFv4.2\n#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO']
+    all_vcfs = ["##fileformat=VCFv4.2\n#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO"]
     # sort lines
     # sorted_lines = sorted(breakpoints, key = lambda x: (x[0],x[3], int(x[1]), int(x[4])))
     sorted_lines = sorted(breakpoints, key=lambda x: (x[0], x[3], int(x[1])))
     i = 0
+    n = 1
     # group breakpoints to merge
     while i < len(sorted_lines):
         j = 0
@@ -140,8 +140,9 @@ def merge_breaks(breakpoints, margin=100, support=2):
                 all_vcfs.append(vcf_out[0])
                 all_vcfs.append(vcf_out[1])
                 n += 2
-        i += (j+ 1)  
-    return all_merges, all_vcfs 
+        i += j + 1
+    return all_merges, all_vcfs
+
 
 # with open(outPref + '.vcf','w') as final_vcf:
 # final_vcf.write('\n'.join(all_vcfs))
@@ -185,8 +186,7 @@ if __name__ == "__main__":
     lines = []
     with open(brkFile, "r") as f:
         for line in f:
-            lines.append(line.strip().split('\t'))
-    bed, vcf = merge_breaks(lines, margin, min_support) 
-    #sys.stdout.write('\n'.join(bed))  
-    sys.stdout.write('\n'.join(vcf)) 
-
+            lines.append(line.strip().split("\t"))
+    bed, vcf = merge_breaks(lines, margin, min_support)
+    # sys.stdout.write('\n'.join(bed))
+    sys.stdout.write("\n".join(vcf))

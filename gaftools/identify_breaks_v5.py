@@ -2,25 +2,51 @@ import argparse
 
 
 # function to read in file and sort by read id
-def load_gaf_for_breakpoints(gafFile, min_mapQ=5, min_map_len=2000):
+#def load_gaf_for_breakpoints(gafFile, min_mapQ=5, min_map_len=2000):
     # read in lines and split into feilds
-    lines = []
+    #lines = []
     # dont read in lines that are below mapping Q or min map length
-    with open(gafFile, "r") as f:
-        for line in f:
-            s = line.strip().split("\t")
-            if int(s[11]) < min_mapQ:
-                continue
-            if int(s[8]) - int(s[7]) < min_map_len:
-                continue
-            lines.append(s)
+   # with open(gafFile, "r") as f:
+        #for line in f:
+       #     s = line.strip().split("\t")
+      #      if int(s[11]) < min_mapQ:
+     #           continue
+    #        if int(s[8]) - int(s[7]) < min_map_len:
+   #             continue
+  #          lines.append(s)
 
     #sort lines by read ID and mapping start in read 
     
-    sorted_lines = sorted(lines, key = lambda x: (int(x[2])))  
+ #   sorted_lines = sorted(lines, key = lambda x: (int(x[2])))  
 
-    return sorted_lines
+#    return sorted_lines
 
+def load_gaf_to_grouped_reads(gafFile, min_mapQ=5, min_map_len=2000):
+    # Read lines, split into fields, and filter based on conditions
+    lines = []
+    with open(gafFile, "r") as gafFileHandler:
+        for line in gafFileHandler:
+            fields = line.strip().split("\t")
+            read_name = fields[0]
+            # Skip low mapping quality, short aligned length
+            # For minimap2 paf, we skipped supplementary alignment
+            if (fields[16] == "tp:A:S" or int(fields[11]) < min_mapQ or int(fields[8]) - int(fields[7]) < min_map_len):
+                continue
+            if len(lines) >= 1:
+                if read_name == lines[-1][0]: 
+                    lines.append(fields)
+                else:
+                    # locally sort a group of reads
+                    sorted_lines = sorted(lines, key=lambda x: (int(x[2])))
+                    yield sorted_lines
+                    lines = [fields]
+            else:
+                lines.append(fields)
+        
+    sorted_lines = sorted(lines, key=lambda x: (int(x[2])))
+    yield sorted_lines
+    del lines
+    del sorted_lines
 
 # function to return final node in graph path as this is where the BND is occuring
 def get_contig(s, ch, location, node_end):
@@ -181,4 +207,14 @@ if __name__ == "__main__":
     gafFile = args.i
     min_mapQ = args.m
     min_map_len = args.a
-    call_breakpoints(gafFile, min_mapQ, min_map_len)
+    
+    groups = load_gaf_to_grouped_reads(args.i)
+    all_breaks = []
+    for group in groups:
+        if len(group) > 1:
+            brks = call_breakpoints(group, min_mapQ, min_map_len)
+            for brk in brks:
+                all_breaks.append('\t'.join(brk))
+   
+    print('\n'.join(all_breaks))  
+  

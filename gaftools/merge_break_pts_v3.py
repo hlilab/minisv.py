@@ -31,7 +31,7 @@ def vcf_format(original, number):
     out = []
     s = original.strip().split("\t")
     qual = str(round(np.mean([int(x) for x in s[5].split(",")])))
-    read_count = str(len(s[5].split(";")))
+    read_count = str(len(s[5].split(",")))
     info = ";READ_COUNTS=" + read_count + ";READ_IDS=" + s[6]
     if s[2] == ">>":
         out.append(
@@ -188,5 +188,5 @@ if __name__ == "__main__":
         for line in f:
             lines.append(line.strip().split("\t"))
     bed, vcf = merge_breaks(lines, margin, min_support)
-    # sys.stdout.write('\n'.join(bed))
-    sys.stdout.write("\n".join(vcf))
+    sys.stdout.write('\n'.join(bed))
+    #sys.stdout.write("\n".join(vcf))

@@ -120,13 +120,16 @@ def convert(contig, brk, direct):
     if not contig.startswith(("<", ">")):
         return contig, brk, direct
     locs = contig.split(":")[-1].split("-")
+    #print(contig)
     if contig.startswith(">"):
+        #print( contig.split(":")[0][1:], str(int(locs[0]) + int(brk)), contig.split(":")[0][0])
         return (
             contig.split(":")[0][1:],
             str(int(locs[0]) + int(brk)),
             contig.split(":")[0][0],
         )
     else:
+      
         return (
             contig.split(":")[0][1:],
             str(int(locs[1]) - int(brk)),
@@ -136,19 +139,24 @@ def convert(contig, brk, direct):
 
 # swap "<<" to ">>" and "<>" to "><" based on symmetries
 def adj_graph_paths(original):
+#    print(original)
     first = convert(original[0], original[1], original[2].strip()[0])
     second = convert(original[3], original[4], original[2].strip()[1])
     arrows = first[2] + second[2]
+#    print(first) 
+ #   print(second)
+  #  print(arrows)
     if arrows == "<<":
         temp = first
         first = second
         second = temp
         arrows = ">>"
-    if arrows == "<>":
-        temp = first
-        first = second
-        second = temp
-        arrows = "><"
+    if arrows == "<>" or arrows == "><":   
+        if first[0] > second[0]:
+            temp = first
+            first = second
+            second = temp
+
     original[0] = first[0]
     original[1] = first[1]
     original[2] = arrows
@@ -208,7 +216,7 @@ if __name__ == "__main__":
     min_mapQ = args.m
     min_map_len = args.a
     
-    groups = load_gaf_to_grouped_reads(args.i)
+    groups = load_gaf_to_grouped_reads(args.i, min_mapQ, min_map_len)
     all_breaks = []
     for group in groups:
         if len(group) > 1:

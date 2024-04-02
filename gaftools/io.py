@@ -152,8 +152,8 @@ def merge_indel_breakpoints(prefix, break_point_file, indel_file):
         for line in break_point_file_handler:
             line = line.strip().split("\t")
             # centromere/vntr annotation
-            print(line)
-            print(line[-1])
+            # print(line)
+            # print(line[-1])
             cent_hit, cent_hit2, vntr_hit, vntr_hit2, cent_dist = line[-1].split(",")
             line = [line[i] if i != -1 else "." for i in breakpoints_indexes]
             line[15] = f"{vntr_hit},{vntr_hit2}"

@@ -144,8 +144,6 @@ class GafParser(object):
                             )
                             indel_row_str = "\t".join(map(str, indel))
                             indel_output.write(f"{indel_row_str}\n")
-                indel_output.close()
-                breakpoint_output.close()
             else:
                 fin = load_gaf_to_grouped_reads(gaf_path, min_mapq, min_map_len)
                 with Pool(n_cpus) as pool:
@@ -173,8 +171,8 @@ class GafParser(object):
                             all_breaks.append(brk)
                             brk_row_str = "\t".join(map(str, brk))
                             breakpoint_output.write(f"{brk_row_str}\n")
-                indel_output.close()
-                breakpoint_output.close()
+        indel_output.close()
+        breakpoint_output.close()
         return all_breaks
 
     def merge_breakpts(self, all_breaks):
@@ -323,6 +321,8 @@ class GafParser(object):
             "chm13linear",
             "grch38graph",
             "grch38linear",
+            "chm13",
+            "grch38",
         ]:
             hdr.append(
                 """##contig=<ID=chr1>
@@ -351,7 +351,7 @@ class GafParser(object):
 ##contig=<ID=chrY>
 ##contig=<ID=chrM>"""
             )
-        elif self.assembly in ["grch37graph", "grch37linear"]:
+        elif self.assembly in ["grch37graph", "grch37linear", "grch37"]:
             hdr.append(
                 """##contig=<ID=1>
 ##contig=<ID=2>

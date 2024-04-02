@@ -1,25 +1,25 @@
 import argparse
 
-
 # function to read in file and sort by read id
-#def load_gaf_for_breakpoints(gafFile, min_mapQ=5, min_map_len=2000):
-    # read in lines and split into feilds
-    #lines = []
-    # dont read in lines that are below mapping Q or min map length
-   # with open(gafFile, "r") as f:
-        #for line in f:
-       #     s = line.strip().split("\t")
-      #      if int(s[11]) < min_mapQ:
-     #           continue
-    #        if int(s[8]) - int(s[7]) < min_map_len:
-   #             continue
-  #          lines.append(s)
+# def load_gaf_for_breakpoints(gafFile, min_mapQ=5, min_map_len=2000):
+# read in lines and split into feilds
+# lines = []
+# dont read in lines that are below mapping Q or min map length
+# with open(gafFile, "r") as f:
+# for line in f:
+#     s = line.strip().split("\t")
+#      if int(s[11]) < min_mapQ:
+#           continue
+#        if int(s[8]) - int(s[7]) < min_map_len:
+#             continue
+#          lines.append(s)
 
-    #sort lines by read ID and mapping start in read 
-    
- #   sorted_lines = sorted(lines, key = lambda x: (int(x[2])))  
+# sort lines by read ID and mapping start in read
+
+#   sorted_lines = sorted(lines, key = lambda x: (int(x[2])))
 
 #    return sorted_lines
+
 
 def load_gaf_to_grouped_reads(gafFile, min_mapQ=5, min_map_len=2000):
     # Read lines, split into fields, and filter based on conditions
@@ -30,10 +30,14 @@ def load_gaf_to_grouped_reads(gafFile, min_mapQ=5, min_map_len=2000):
             read_name = fields[0]
             # Skip low mapping quality, short aligned length
             # For minimap2 paf, we skipped supplementary alignment
-            if (fields[16] == "tp:A:S" or int(fields[11]) < min_mapQ or int(fields[8]) - int(fields[7]) < min_map_len):
+            if (
+                fields[16] == "tp:A:S"
+                or int(fields[11]) < min_mapQ
+                or int(fields[8]) - int(fields[7]) < min_map_len
+            ):
                 continue
             if len(lines) >= 1:
-                if read_name == lines[-1][0]: 
+                if read_name == lines[-1][0]:
                     lines.append(fields)
                 else:
                     # locally sort a group of reads
@@ -42,21 +46,24 @@ def load_gaf_to_grouped_reads(gafFile, min_mapQ=5, min_map_len=2000):
                     lines = [fields]
             else:
                 lines.append(fields)
-        
+
     sorted_lines = sorted(lines, key=lambda x: (int(x[2])))
     yield sorted_lines
     del lines
     del sorted_lines
+
 
 # function to return final node in graph path as this is where the BND is occuring
 def get_contig(s, ch, location, node_end):
     # ignore if not in graph path
     # NOTE: hg19 do not have chr as start string
     #      we extended to hg19 with hard-coded conditions
+    # print(s)
     if (
         s.startswith("chr")
         or s.isdigit()
         or s.startswith("GL")
+        or s.startswith("NC")
         or s.startswith("hs")
         or s in ["MT", "X", "Y"]
     ):
@@ -120,16 +127,15 @@ def convert(contig, brk, direct):
     if not contig.startswith(("<", ">")):
         return contig, brk, direct
     locs = contig.split(":")[-1].split("-")
-    #print(contig)
+    # print(contig)
     if contig.startswith(">"):
-        #print( contig.split(":")[0][1:], str(int(locs[0]) + int(brk)), contig.split(":")[0][0])
+        # print( contig.split(":")[0][1:], str(int(locs[0]) + int(brk)), contig.split(":")[0][0])
         return (
             contig.split(":")[0][1:],
             str(int(locs[0]) + int(brk)),
             contig.split(":")[0][0],
         )
     else:
-      
         return (
             contig.split(":")[0][1:],
             str(int(locs[1]) - int(brk)),
@@ -139,19 +145,19 @@ def convert(contig, brk, direct):
 
 # swap "<<" to ">>" and "<>" to "><" based on symmetries
 def adj_graph_paths(original):
-#    print(original)
+    #    print(original)
     first = convert(original[0], original[1], original[2].strip()[0])
     second = convert(original[3], original[4], original[2].strip()[1])
     arrows = first[2] + second[2]
-#    print(first) 
- #   print(second)
-  #  print(arrows)
+    #    print(first)
+    #   print(second)
+    #  print(arrows)
     if arrows == "<<":
         temp = first
         first = second
         second = temp
         arrows = ">>"
-    if arrows == "<>" or arrows == "><":   
+    if arrows == "<>" or arrows == "><":
         if first[0] > second[0]:
             temp = first
             first = second
@@ -215,14 +221,13 @@ if __name__ == "__main__":
     gafFile = args.i
     min_mapQ = args.m
     min_map_len = args.a
-    
+
     groups = load_gaf_to_grouped_reads(args.i, min_mapQ, min_map_len)
     all_breaks = []
     for group in groups:
         if len(group) > 1:
             brks = call_breakpoints(group, min_mapQ, min_map_len)
             for brk in brks:
-                all_breaks.append('\t'.join(brk))
-   
-    print('\n'.join(all_breaks))  
-  
+                all_breaks.append("\t".join(brk))
+
+    print("\n".join(all_breaks))

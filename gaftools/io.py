@@ -74,18 +74,21 @@ def merge_indel_breakpoints(prefix, break_point_file, indel_file):
     - merged_file path (str): Path to the merged bedpe format file.
     """
     col_names = [
-        "#chrom_contig1",
+        "#chrom1",
         "start1",
         "end1",
-        "chrom_contig2",
+        "chrom2",
         "start2",
-        "end2",
+        "end2",  # 5
+        "name",  # 11
+        "score",
+        "strand1",
+        "strand2",
         "indel_length",
         "tsd_length",
         "polyA_length",
         "indel_seq",
         "read_counts",
-        "dot",
         "average_mapquality",
         "forward_strand_counts",
         "reverse_strand_counts",
@@ -103,6 +106,9 @@ def merge_indel_breakpoints(prefix, break_point_file, indel_file):
         -1,
         3,
         4,
+        -1,  # 5
+        -1,  # 11
+        -1,  # score
         -1,
         -1,
         -1,
@@ -126,13 +132,16 @@ def merge_indel_breakpoints(prefix, break_point_file, indel_file):
         2,
         -1,
         -1,
+        -1,  # 5
+        8,  # 11
+        -1,  # score
+        -1,
         -1,
         3,
         4,
         5,
         6,
         7,
-        8,
         9,
         10,
         11,

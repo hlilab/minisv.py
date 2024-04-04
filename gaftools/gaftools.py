@@ -579,7 +579,7 @@ class GafParser(object):
                     nr += 1
 
             indel_seq = "."
-            # TODO: calculate concensus sequence in the next version
+            # TODO: convert multiple sequences into concensus sequence in the next version
             if self.ds:  # gaf file, pick a arbitrary sequence
                 indel_seq = t[10][0]
 
@@ -652,7 +652,7 @@ class GafParser(object):
                         polyA_len_str,  # average polyA length
                         indel_seq,  # randomly pick one
                         n,
-                        ".",
+                        ".",  # 8
                         f"mq:i:{mapq}",
                         f"cf:i:{nf}",
                         f"cr:i:{nr}",
@@ -770,7 +770,7 @@ class GafParser(object):
                         # read name
                         bj[11].append(f"{ai[4]}{ai[2]}")
                     else:  # paf file
-                        bj[8].append(f"{ai[4]}{ai[2]}")
+                        raise Exception("Not implemented yet")
 
                     # reassign the end point
                     # if bj contains the ai indel

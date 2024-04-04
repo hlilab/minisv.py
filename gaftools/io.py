@@ -1,14 +1,11 @@
 """ A generalized input interface for both INDELs and breakpoints
 We could put the output interface into this submodule as well.
 """
-import argparse
+# import argparse
 import gzip
-
-# import sys
 from dataclasses import dataclass
 
-from gaftools.identify_breaks_v5 import call_breakpoints
-
+# from .identify_breaks_v5 import call_breakpoints
 # from gaftools.merge_break_pts_v3 import merge_breaks
 
 
@@ -30,8 +27,9 @@ def load_gaf_to_grouped_reads(gafFile, min_mapQ=5, min_map_len=2000):
 
     Returns:
     - sorted_lines (list): List of GAF lines sorted by cluster location in read.
+
+    NOTE: This function is a generator. The PAF/GAF file already outputs sorted reads by names.
     """
-    # Read lines, split into fields, and filter based on conditions
     lines = []
     with open(gafFile, "r") as gafFileHandler:
         for line in gafFileHandler:
@@ -39,7 +37,7 @@ def load_gaf_to_grouped_reads(gafFile, min_mapQ=5, min_map_len=2000):
             read_name = fields[0]
 
             # Skip low mapping quality, short aligned length
-            # For minimap2 paf, we skipped supplementary alignment
+            # For minimap2 paf, we skipped secondary alignment marked by tp:A:S
             if (
                 fields[16] == "tp:A:S"
                 or int(fields[11]) < min_mapQ
@@ -66,13 +64,14 @@ def load_gaf_to_grouped_reads(gafFile, min_mapQ=5, min_map_len=2000):
 def merge_indel_breakpoints(prefix, break_point_file, indel_file):
     """
     Merge indel and breakpoint files into a single file.
+    We use generic breakpoints as the output for both indel and breakpoints
 
     Args:
     - break_point_file (str): Path to the breakpoint file.
     - indel_file (str): Path to the indel file.
 
     Returns:
-    - merged_file (str): Path to the merged file.
+    - merged_file path (str): Path to the merged bedpe format file.
     """
     col_names = [
         "#chrom_contig1",
@@ -172,26 +171,47 @@ def merge_indel_breakpoints(prefix, break_point_file, indel_file):
     harmonized_output.close()
 
 
-def merge_sv_vcf(prefix, indel_vcf, breakpoint_vcf):
-    """Merge indel and breakpoint VCF files into a single file.
+def merge_breakpoint_indel_vcf(prefix, indel_vcf, breakpoint_vcf):
+    """Merge indel and breakpoint vcf files into a single file.
+
     Args:
+    - prefix (str): Prefix for the output file.
+    - indel_vcf (str): Path to the indel vcf file.
+    - breakpoint_vcf (str): Path to the breakpoint vcf file.
+
+    Returns:
+    - merged_vcf (str): Path to the merged vcf file.
     """
-    return
+    merged_vcf = f"{prefix}_merged.vcf"
+    merged_vcf_handler = open(merged_vcf, "w")
+
+    with open(indel_vcf, "r") as indel_vcf_handler:
+        for line in indel_vcf_handler:
+            merged_vcf_handler.write(line)
+
+    with open(breakpoint_vcf, "r") as breakpoint_vcf_handler:
+        for line in breakpoint_vcf_handler:
+            if line.startswith("#"):
+                continue
+            merged_vcf_handler.write(line)
+
+    merged_vcf_handler.close()
+    return merged_vcf
 
 
-if __name__ == "__main__":
-    # test script locally
-    parser = argparse.ArgumentParser(description="Identify Break Points from GAF input")
-    parser.add_argument("-i", required=True, help="input GAF file")
-    args = parser.parse_args()
-    groups = load_gaf_to_grouped_reads(args.i)
-    all_breaks = []
-    for group in groups:
-        if len(group) > 1:
-            brks = call_breakpoints(group)
-            for brk in brks:
-                all_breaks.append(brk)
-
-    # bnd_bed, bnd_vcf = merge_breaks(lines, 100, 5)
-    # sys.stdout.write('\n'.join(bnd_bed))
-    # sys.stdout.write("\n".join(bnd_vcf))
+# if __name__ == "__main__":
+#    # test script locally
+#    parser = argparse.ArgumentParser(description="Identify Break Points from GAF input")
+#    parser.add_argument("-i", required=True, help="input GAF file")
+#    args = parser.parse_args()
+#    groups = load_gaf_to_grouped_reads(args.i)
+#    all_breaks = []
+#    for group in groups:
+#        if len(group) > 1:
+#            brks = call_breakpoints(group)
+#            for brk in brks:
+#                all_breaks.append(brk)
+#
+#    # bnd_bed, bnd_vcf = merge_breaks(lines, 100, 5)
+#    # sys.stdout.write('\n'.join(bnd_bed))
+#    # sys.stdout.write("\n".join(bnd_vcf))

@@ -1,56 +1,8 @@
+"""Main interface for breakpoints caller"""
+
 import argparse
 
-# function to read in file and sort by read id
-# def load_gaf_for_breakpoints(gafFile, min_mapQ=5, min_map_len=2000):
-# read in lines and split into feilds
-# lines = []
-# dont read in lines that are below mapping Q or min map length
-# with open(gafFile, "r") as f:
-# for line in f:
-#     s = line.strip().split("\t")
-#      if int(s[11]) < min_mapQ:
-#           continue
-#        if int(s[8]) - int(s[7]) < min_map_len:
-#             continue
-#          lines.append(s)
-
-# sort lines by read ID and mapping start in read
-
-#   sorted_lines = sorted(lines, key = lambda x: (int(x[2])))
-
-#    return sorted_lines
-
-
-def load_gaf_to_grouped_reads(gafFile, min_mapQ=5, min_map_len=2000):
-    # Read lines, split into fields, and filter based on conditions
-    lines = []
-    with open(gafFile, "r") as gafFileHandler:
-        for line in gafFileHandler:
-            fields = line.strip().split("\t")
-            read_name = fields[0]
-            # Skip low mapping quality, short aligned length
-            # For minimap2 paf, we skipped supplementary alignment
-            if (
-                fields[16] == "tp:A:S"
-                or int(fields[11]) < min_mapQ
-                or int(fields[8]) - int(fields[7]) < min_map_len
-            ):
-                continue
-            if len(lines) >= 1:
-                if read_name == lines[-1][0]:
-                    lines.append(fields)
-                else:
-                    # locally sort a group of reads
-                    sorted_lines = sorted(lines, key=lambda x: (int(x[2])))
-                    yield sorted_lines
-                    lines = [fields]
-            else:
-                lines.append(fields)
-
-    sorted_lines = sorted(lines, key=lambda x: (int(x[2])))
-    yield sorted_lines
-    del lines
-    del sorted_lines
+from gaftools.io import load_gaf_to_grouped_reads
 
 
 # function to return final node in graph path as this is where the BND is occuring
@@ -86,16 +38,31 @@ def get_contig(s, ch, location, node_end):
             return s[nodes[0] : nodes[1]], str(location)
 
 
-# function to find the break point between two chuncks of the read mapping
 def find_break(m1, m2):
+    """
+    Function to find the break point between two chunks of the read mapping
+    Args:
+    - m1 (list): First read mapping information.
+    - m2 (list): Second read mapping information.
+    Returns:
+    - list: Breakpoint information.
+
+    NOTE: m1 and m2 should share the same read name
+
+    """
+    assert m1[0] == m2[0], "Read names do not match"
     # translate strands into breakpoint notation
     strand_translation = {"+": ">", "-": "<"}
     # determine break locations based on strand
     b1 = 0
+    # m1[5]: genome graph path
     if m1[4] == "+":
+        # https://github.com/lh3/gfatools/blob/master/doc/rGFA.md
+        # m1[8]: end pos
         b1 = int(m1[8])
         contig_m1 = get_contig(m1[5], [">", "<"], b1, True)
     elif m1[4] == "-":
+        # m1[8]: start pos
         b1 = int(m1[7])
         contig_m1 = get_contig(m1[5], [">", "<"], b1, False)
     b2 = 0
@@ -106,10 +73,6 @@ def find_break(m1, m2):
         b2 = int(m2[8])
         contig_m2 = get_contig(m2[5], [">", "<"], b2, True)
 
-    # get info of first chunk of read
-    # contig_m1 = get_contig(m1[5], ['>', '<'], b1, True)
-    # second chunk of read
-    # contig_m2 = get_contig(m2[5], ['>', '<'], b2, False)
     # return a more legible break point text format
     return [
         contig_m1[0],
@@ -143,8 +106,8 @@ def convert(contig, brk, direct):
         )
 
 
-# swap "<<" to ">>" and "<>" to "><" based on symmetries
 def adj_graph_paths(original):
+    # swap "<<" to ">>" and "<>" to "><" based on symmetries
     #    print(original)
     first = convert(original[0], original[1], original[2].strip()[0])
     second = convert(original[3], original[4], original[2].strip()[1])
@@ -171,22 +134,15 @@ def adj_graph_paths(original):
     return original
 
 
-# calling all the functions above
-# def output_breakpoints_bed(sorted_lines):
-# prev_line = [0,0]
-# output = []
-# go through all sorted lines
-# for line in sorted_lines:
-# get read ids with supp. mappings
-# if line[0] == prev_line[0]:
-#       output.append(adj_graph_paths(breaks))
-# prev_line = line
-# write to stdout for now, but can just pass array straight into merge function
-# sys.stdout.write('\n'.join(output))
-
-
 def call_breakpoints(read_cluster, min_mapQ=5, min_map_len=2000):
-    # sorted_lines = load_gaf_for_breakpoints(gafFile, min_mapQ=5, min_map_len=2000)
+    """Main function to call breakpoints from a cluster of reads
+    Args:
+    - read_cluster (list): List of reads in a cluster.
+    - min_mapQ (int): Minimum mapping quality threshold (default: 5).
+    - min_map_len (int): Minimum mapping length threshold (default: 2000).
+    Returns:
+    - output (list): List of breakpoints in the cluster.
+    """
     output = []
     for i in range(1, len(read_cluster)):
         breaks = find_break(read_cluster[i - 1], read_cluster[i])
@@ -229,5 +185,4 @@ if __name__ == "__main__":
             brks = call_breakpoints(group, min_mapQ, min_map_len)
             for brk in brks:
                 all_breaks.append("\t".join(brk))
-
     print("\n".join(all_breaks))

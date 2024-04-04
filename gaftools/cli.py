@@ -96,12 +96,12 @@ def getsv(
     )
 
     gafs.merge_indel(min_cnt=support_read, min_mapq=mapq)
-    gafs.merge_breakpts(all_breakpts)
+    merged_breakpt_vcf_list = gafs.merge_breakpts(all_breakpts)
 
-    merged_breakpt_vcf_list = merge_indel_breakpoints(
-        prefix, gafs.breakpt_file, gafs.indel_file
-    )
+    # output bedpe format
+    merge_indel_breakpoints(prefix, gafs.breakpt_file, gafs.indel_file)
 
+    # output vcf format
     gafs.bed2vcf(command=command, merged_breakpt_vcf_list=merged_breakpt_vcf_list)
 
 

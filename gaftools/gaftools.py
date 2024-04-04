@@ -1,4 +1,4 @@
-"""An module for parsing GAF/PAF format from minigraph alignment and minimap2 alignment
+"""A module for parsing GAF/PAF format from minigraph alignment and minimap2 alignment
 """
 
 import functools
@@ -15,7 +15,7 @@ import mappy as mp
 from intervaltree import Interval  # type: ignore
 
 from .identify_breaks_v5 import call_breakpoints
-from .io import GroupedResults, load_gaf_to_grouped_reads
+from .io import GroupedResults, load_gaf_to_grouped_reads, merge_breakpoint_indel_vcf
 from .merge_break_pts_v3 import merge_breaks
 
 cigar_pattern = re.compile(r"(\d+)([=XIDM])")
@@ -48,8 +48,13 @@ def parse_one_line(line, min_mapq=30, min_len=100, verbose=False, lineno=0, ds=T
 
 
 def parse_grouped_reads(
-    grouped_reads, min_mapq=30, min_indel_len=100, verbose=False, lineno=0, ds=True
-):
+    grouped_reads: list[str],
+    min_mapq: int = 30,
+    min_indel_len: int = 100,
+    verbose: bool = False,
+    lineno: int = 0,
+    ds: bool = True,
+) -> GroupedResults:
     all_indels = []
     for read in grouped_reads:
         parsed_read = AlignedRead(read)
@@ -313,7 +318,6 @@ class GafParser(object):
         hdr.append("##source=gaftools1.0")
         hdr.append(f'##command="{command}"')
         hdr.append(f'##fileDate="{formatted_time}"')
-        # remove lengths for both hg38 and chm13
 
         # chm13graph,chm13linear,grch37graph,grch37linear,grch38graph,grch38linear
         if self.assembly in [
@@ -410,9 +414,7 @@ class GafParser(object):
 
         for h in hdr:
             vcf_output.write(f"{h}\n")
-        # if len(self.gaf_paths) > 1:
-        #     samples_header = list(map(lambda x: os.path.basename(x).replace(".gaf", ""), self.gaf_paths))
-        # else:
+
         samples_header = ["SAMPLE"]
         columns = [
             "#CHROM",
@@ -456,16 +458,26 @@ class GafParser(object):
                     # No need for CHR2 now since no breakpoint added yet
                     # Not sure how other tool define PRECISE/IMPRECISE
                     mapq = line[9].replace("mq:i:", "")
-                    reads = line[-1].replace("rd:Z:", "")
-                    VNTR = line[-3] == "True"
-                    CENT = line[-2] == "True"
+                    reads = line[-2].replace("rd:Z:", "")
+                    VNTR = line[-5] == "True"
+                    CENT = line[-4] == "True"
                     # GT:GQ:VAF:DR:DV 0|1:279:0.45:36:29
                     # Not sure how to decide GT, GQ and VAF, DR yet
                     vcf_output.write(
-                        f"{line[0]}\t{start}\tgaftools1.{type}.{indel_num}\tN\t{ALT}\t.\tPASS\tEND={end}SVTYPE={type};SVLEN={line[3]};TSDLEN={line[4]};POLYALEN={line[5]};DETAILED_TYPE=None;MAPQ={mapq};SUPPREAD={line[7]};VNTR={VNTR};CENTROMERE={CENT};RNAMES={reads}\tGT:GQ:VAF:DR:DV\t.:.:.:.:{line[7]}\n"
+                        f"{line[0]}\t{start}\tgaftools1.{type}.{indel_num}\tN\t{ALT}\t.\tPASS\tEND={end};SVTYPE={type};SVLEN={line[3]};TSDLEN={line[4]};POLYALEN={line[5]};DETAILED_TYPE=None;MAPQ={mapq};SUPPREAD={line[7]};VNTR={VNTR};CENTROMERE={CENT};RNAMES={reads}\tGT:GQ:VAF:DR:DV\t.:.:.:.:{line[7]}\n"
                     )
                     indel_num += 1
         vcf_output.close()
+
+        breakpoint_vcf_output = open(f"{self.output}_mergedbreakpoint.vcf", "w")
+        for line in merged_breakpt_vcf_list:
+            breakpoint_vcf_output.write(f"{line}\tGT:GQ:VAF:DR:DV\t.:.:.:.:.\n")
+        breakpoint_vcf_output.close()
+        merge_breakpoint_indel_vcf(
+            self.output,
+            f"{self.output}_mergedindel.vcf",
+            f"{self.output}_mergedbreakpoint.vcf",
+        )
 
     def parse_tree_bed(self, bed, window_size=10) -> dict:
         bed_dict: dict[Any, Any] = {}  # type: ignore

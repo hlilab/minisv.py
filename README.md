@@ -3,34 +3,38 @@
 ### <a name="docker"></a>Use docker
 
 ```sh
+sudo apt install build-essential
+mamba create -n gaftools python==3.10 poetry cython==3.0.7
+conda activate gaftools
 git clone https://github.com/qinqian/gaftools
-cd gaftools && docker build -t gaftools .
+make
+
 tumor_gaf=tumor_gaf
 normal_gaf=normal_gaf
 
 # tumor-only or normal-only mode
-docker run -i -v $(pwd):$(pwd) gaftools gaftools getsv -c 4 -m 5 -l 50 --input tumor.gaf -r 2 -p output_prefix --vntr trf.bed --l1 l1.fasta -a 2000 -s grch38graph --ds
+gaftools sv -b centromere.bed -n tumor tumor_gaf > tumor_sv.bed
+sort -k1,1 -k2,2n tumor_sv.bed | gaftools merge - > tumor_mergedsv.bed
+
+# normal-only model
+gaftools sv -b centromere.bed -n normal normal_gaf > normal_sv.bed
+sort -k1,1 -k2,2n normal_sv.bed | gaftools merge - > normal_mergedsv.bed
 
 # tumor-normal pair mode
-docker run -i -v $(pwd):$(pwd) gaftools gaftools getsv -c 4 -m 5 -l 50 --input tumor.gaf --normal normal.gaf -r 2 -p output_prefix --vntr trf.bed --l1 l1.fasta -a 2000 -s grch38graph --ds
+gaftools sv -b centromere.bed -n tumor tumor_gaf > tumor_sv.bed
+gaftools sv -b centromere.bed -n normal normal_gaf > normal_sv.bed
+cat tumor_sv.bed normal_sv.bed | sort -k1,1 -k2,2n - | gaftools merge - > tumor_normal_pair_mergedsv.bed
+
+
+Or use docker version
+
+docker build -t gaftools .
 
 ```
 
 ### <a name="ubuntu"></a>Use Ubuntu
 
 ```sh
-sudo apt install build-essential
-mamba create -n gaftools python==3.10 poetry cython==3.0.7
-conda activate gaftools
-git clone https://github.com/qinqian/gaftools
-cd gaftools && make
-gaf=input_gaf
-normalgaf=normal_gaf
-# tumor-only or normal-only mode
-gaftools getindel-cython -m 30 -l 100 --input $gaf -r 3 -p output_prefix
-
-# tumor-normal pair mode
-docker run -i -v $(pwd):$(pwd) gaftools gaftools getindel -c 4 -m 30 -l 100 --input $(pwd)/$gaf --normal $normalgaf -r 3 -p $(pwd)/${gaf/.gaf/}_mapq30_mlen100_cnt3
 ```
 
 ## <a name="intro"></a>Introduction

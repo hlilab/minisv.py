@@ -7,7 +7,6 @@ from .regex import path_seg_pattern
 
 def get_breakpoint(opt, z):
     """ """
-
     if len(z) < 2:
         return
 
@@ -16,7 +15,7 @@ def get_breakpoint(opt, z):
 
     # filter short alignment towards the end of the read
     zen = len(z)
-    for j in range(len(z) - 1, -1):
+    for j in range(len(z) - 1, -1, -1):
         y = z[j]
         if y.qen - y.qst < opt.min_aln_len_end or y.mapq < opt.min_mapq_end:
             zen = j
@@ -25,6 +24,7 @@ def get_breakpoint(opt, z):
 
     if zen < 2:
         return
+
     # filter out short alignment towards the start of the read
     zst = 0
     for j in range(zen):
@@ -71,32 +71,32 @@ def get_breakpoint(opt, z):
             c1 = y0.coor[1]
             strand2 = "-"
             ori = ("<" if c1.ori == ">" else ">") + ("<" if c0.ori == ">" else ">")
-            sv_info = infer_svtype(opt, c0, c1, ori, qgap)
 
-            cen_str = ""
-            if c0.ctg in opt.cen or c1.ctg in opt.cen:
-                dist0 = cal_cen_dist(opt, c0.ctg, c0.pos)
-                dist1 = cal_cen_dist(opt, c1.ctg, c1.pos)
-                cen_str = f";cen_dist={dist0 if dist0 < dist1 else dist1}"
+        sv_info = infer_svtype(opt, c0, c1, ori, qgap)
+        cen_str = ""
+        if (c0.ctg in opt.cen) or (c1.ctg in opt.cen):
+            dist0 = cal_cen_dist(opt, c0.ctg, c0.pos)
+            dist1 = cal_cen_dist(opt, c1.ctg, c1.pos)
+            cen_str = f";cen_dist={dist0 if dist0 < dist1 else dist1}"
 
-                # NOTE: is this condition equal to same chromosome sv?
-                if sv_info.st >= 0 and sv_info.en >= sv_info.st:
-                    ov = cal_cen_overlap(opt, c0.ctg, sv_info.st, sv_info.en)
-                    cen_str += f";cen_overlap={ov}"
+            # NOTE: is this condition equal to same chromosome sv?
+            if sv_info.st >= 0 and sv_info.en >= sv_info.st:
+                ov = cal_cen_overlap(opt, c0.ctg, sv_info.st, sv_info.en)
+                cen_str += f";cen_overlap={ov}"
 
-            # NOTE: do we have long inserted L1 from breakpoints?
-            print(
-                c0.ctg,
-                c0.pos,
-                ori,
-                c1.ctg,
-                c1.pos,
-                y0.qname,
-                y0.mapq if y0.mapq < y1.mapq else y1.mapq,
-                strand2,
-                f"{sv_info.str};qgap={qgap};mapq={y0.mapq},{y1.mapq};aln_len={y0.qen-y0.qst},{y1.qen-y1.qst}{cen_str};source={opt.name}",
-                sep="\t",
-            )
+        # NOTE: do we have long inserted L1 from breakpoints?
+        print(
+            c0.ctg,
+            c0.pos,
+            ori,
+            c1.ctg,
+            c1.pos,
+            y0.qname,
+            y0.mapq if y0.mapq < y1.mapq else y1.mapq,
+            strand2,
+            f"{sv_info.str};qgap={qgap};mapq={y0.mapq},{y1.mapq};aln_len={y0.qen-y0.qst},{y1.qen-y1.qst}{cen_str};source={opt.name}",
+            sep="\t",
+        )
     return None
 
 

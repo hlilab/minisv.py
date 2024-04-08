@@ -81,12 +81,3 @@ def load_reads(input_file, opt):
             z.append(y)
         get_indel(opt, z)
         get_breakpoint(opt, z)
-
-
-if __name__ == "__main__":
-    import sys
-
-    input_file = sys.argv[1]
-
-    test = alignment("a", 1, 1, 1, 1, 1, 1, "b", "c")
-    print(test)

@@ -1,12 +1,29 @@
 #!/usr/bin/env python
 
 import sys
+from dataclasses import dataclass
 
 import rich_click as click
 
 from .cygaftools import GafParser as cy_GafParser
 from .gaftools import GafParser
 from .io import merge_indel_breakpoints
+
+
+@dataclass
+class opt:
+    cen: dict
+    min_mapq: int = 5
+    min_mapq_end: int = 30
+    min_frac: float = 0.7
+    min_len: int = 100
+    min_aln_len_end: int = 2000
+    min_aln_len_mid: int = 50
+    max_cnt: int = 5
+    dbg: bool = False
+    polyA_pen: int = 5
+    polyA_drop: int = 100
+    name: str = "foo"
 
 
 @click.group(help="Pangenome SV tool commands")
@@ -103,6 +120,87 @@ def getsv(
 
     # output vcf format
     gafs.bed2vcf(command=command, merged_breakpt_vcf_list=merged_breakpt_vcf_list)
+
+
+@cli.command()
+@click.option("-q", required=False, default=5, type=int, help="minimum mapping quality")
+@click.option(
+    "-x",
+    required=False,
+    default=30,
+    type=int,
+    help="minimum mapping quality in the end",
+)
+@click.option(
+    "-l", "--svlen", required=False, default=100, type=int, help="minimum sv length"
+)
+@click.option("-d", is_flag=True, help="verbose option for debug")
+@click.option(
+    "-f", required=False, default=0.7, type=float, help="min fraction of reads"
+)
+@click.option("-c", required=False, default=5, help="maximum count of sv in a read")
+@click.option("-a", required=False, type=int, default=5, help="polyA penalty")
+@click.option(
+    "-e",
+    required=False,
+    default=2000,
+    type=int,
+    help="minimum aligned length in the end",
+)
+@click.option(
+    "-m",
+    required=False,
+    default=50,
+    type=int,
+    help="minimum aligned length in the middle",
+)
+@click.option("-n", required=False, default="foo", type=str, help="sample name")
+@click.option(
+    "-b", required=False, type=click.Path(exists=True), help="centromere bed file"
+)
+@click.argument("filename", nargs=-1)
+def sv(
+    q: int,
+    x: int,
+    svlen: int,
+    d: bool,
+    f: float,
+    c: int,
+    a: int,
+    e: int,
+    m: int,
+    n: str,
+    b: str,
+    filename: tuple,
+):
+    from .read_parser import load_reads
+
+    options = opt(
+        min_mapq=q,
+        min_mapq_end=x,
+        min_len=svlen,
+        dbg=d,
+        min_frac=f,
+        max_cnt=c,
+        polyA_pen=a,
+        min_aln_len_end=e,
+        min_aln_len_mid=m,
+        name=n,
+        cen={},
+    )
+
+    if b is not None:
+        with open(b) as centromere_file:
+            for line in centromere_file:
+                t = line.strip().split("\t")
+                if t[0] not in options.cen:
+                    options.cen[t[0]] = []
+                options.cen[t[0]].append([int(t[1]), int(t[2])])
+            for ctg in options.cen:
+                options.cen[ctg].sort(lambda x: x[0])
+    click.echo(options)
+    click.echo(filename)
+    load_reads(filename[0], options)
 
 
 @cli.command()

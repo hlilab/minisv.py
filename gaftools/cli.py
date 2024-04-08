@@ -26,6 +26,16 @@ class opt:
     name: str = "foo"
 
 
+@dataclass
+class mergeopt:
+    min_cnt: int = 3
+    min_cnt_rt: int = 1
+    min_rt_len: int = 10
+    win_size: int = 100
+    max_diff: float = 0.05
+    min_cen_dist: int = 5e5
+
+
 @click.group(help="Pangenome SV tool commands")
 def cli():
     pass
@@ -201,6 +211,35 @@ def sv(
     # click.echo(options)
     # click.echo(filename)
     load_reads(filename[0], options)
+
+
+@cli.command()
+@click.option("-w", required=False, default=100, type=int, help="window size")
+@click.option(
+    "-d",
+    required=False,
+    default=0.05,
+    type=float,
+    help="maximum allele length different ratio",
+)
+@click.option("-c", required=False, default=3, type=int, help="minimum sv counts")
+@click.option(
+    "-r",
+    required=False,
+    default=10,
+    type=int,
+    help="min min(TSD_len,polyA_len) to tag a candidate RT",
+)
+@click.option(
+    "-e", required=False, default=5e5, type=float, help="minimum distance to centromere"
+)  # NOTE: in mgutils, this is forced to be int
+@click.argument("input", type=click.File("r"), default=sys.stdin)
+def merge(w: int, d: float, c: int, e: float, r: int, input):
+    """Usage: sort -k 1,1 -k2,2n sv.bed | gaftools merge [options] -"""
+    from .merge import merge_sv
+
+    options = mergeopt(win_size=w, max_diff=d, min_cnt=c, min_cen_dist=e, min_rt_len=r)
+    merge_sv(options, input)
 
 
 @cli.command()

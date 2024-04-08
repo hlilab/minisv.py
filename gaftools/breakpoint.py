@@ -1,7 +1,8 @@
 import re
 from dataclasses import dataclass
 
-path_seg_pattern = re.compile(r"([><])([^><:\s]+):(\d+)-(\d+)")
+from .annotation import cal_cen_dist, cal_cen_overlap
+from .regex import path_seg_pattern
 
 
 def get_breakpoint(opt, z):
@@ -53,8 +54,8 @@ def get_breakpoint(opt, z):
     for j in range(1, len(zz)):
         y0 = zz[j - 1]
         y1 = zz[j]
-        qgap = y1.qst - y0.qen
         # l2, if l2 < 0 means tsd
+        qgap = y1.qst - y0.qen
 
         c0 = y0.coor[1]
         c1 = y1.coor[0]
@@ -64,6 +65,7 @@ def get_breakpoint(opt, z):
         # breakpoints are symmetric
         # chr1 400 >> chr1 500
         # chr1 500 << chr1 400 => chr1 400 >> chr1 500
+        # NOTE: why we still have <<?
         if not ((c0.ctg < c1.ctg) or (c0.ctg == c1.ctg and c0.pos < c1.pos)):
             c0 = y1.coor[0]
             c1 = y0.coor[1]
@@ -79,7 +81,7 @@ def get_breakpoint(opt, z):
 
                 # NOTE: is this condition equal to same chromosome sv?
                 if sv_info.st >= 0 and sv_info.en >= sv_info.st:
-                    ov = cal_cen_overlap(opt, c0.ctg, sv_info)
+                    ov = cal_cen_overlap(opt, c0.ctg, sv_info.st, sv_info.en)
                     cen_str += f";cen_overlap={ov}"
 
             # NOTE: do we have long inserted L1 from breakpoints?
@@ -93,52 +95,9 @@ def get_breakpoint(opt, z):
                 y0.mapq if y0.mapq < y1.mapq else y1.mapq,
                 strand2,
                 f"{sv_info.str};qgap={qgap};mapq={y0.mapq},{y1.mapq};aln_len={y0.qen-y0.qst},{y1.qen-y1.qst}{cen_str};source={opt.name}",
+                sep="\t",
             )
     return None
-
-
-def cal_cen_dist(opt, ctg, pos):
-    if ctg not in opt.cen:
-        return 1e9
-
-    min = 1e9
-    for i in range(len(opt.cen[ctg])):
-        b = opt.cen[ctg][i]
-        if pos < b[0]:
-            d = b[0] - pos
-        else:
-            d = 0 if pos < b[1] else pos - b[1]
-        min = min if min < d else d
-    return min
-
-
-def cal_cen_overlap(opt, ctg, st0, en0):
-    """compute sv overlap with centromere"""
-    if ctg not in opt.cen:
-        return 0
-
-    cov_st = 0
-    cov_en = 0
-    cov = 0
-    for i in range(len(opt.cen[ctg])):
-        b = opt.cen[ctg][i]
-
-        if b[1] <= st0 or b[0] >= en0:  # not overlapping with [st0, en0)
-            continue
-
-        st1 = b[0] if b[0] > st0 else st0
-        en1 = b[1] if b[1] < en0 else en0
-
-        if st1 > cov_en:
-            cov += cov_en - cov_st
-            cov_st = st1
-            cov_en = en1
-        else:
-            # NOTE: is it caused by overlapped centromeres
-            cov_en = cov_en if cov_en > en1 else en1
-
-    cov += cov_en - cov_st
-    return cov
 
 
 @dataclass
@@ -213,13 +172,12 @@ def infer_svtype(opt, c0, c1, ori, qgap):
         )
 
     # NOTE: do we consider two reads?
-    if ori == "<>" or ori == "><" and l1 >= opt.min_len:
+    if (ori == "<>" or ori == "><") and l1 >= opt.min_len:
         st = c0.pos + qgap if qgap < 0 else c0.pos
         en = c1.pos + 1 - qgap if qgap < 0 else c1.pos + 1
         return svtype(
             st=st, en=en, str=f"SVTYPE=INV;SVLEN={l1-qgap};sv_region={st},{en}"
         )
-
     return svtype()
 
 
@@ -232,8 +190,9 @@ class break_end_coord:
 
 
 def get_end_coor(y):
-    """ """
-    if re.match(r"^[><]", y.path):  # a path
+    """get two end coordinate for one supp alignment"""
+    # a path
+    if re.match(r"^[><]", y.path):
         if y.strand != "+":
             raise Exception("reverse strand on path")
 
@@ -243,18 +202,21 @@ def get_end_coor(y):
             en = int(m[3])
             len = en - st
 
+            # NOTE: visulize this compute
             if y.tst >= x and y.tst < x + len:
                 r1 = break_end_coord(ctg=m[1], ori=m[0], pos=-1)
                 r1.pos = (
                     st + (y.tst - x) if m[0] == ">" else st + (x + len - y.tst) - 1
-                )  # Why - 1 here
+                )  # NOTE: Why - 1 here
+            # NOTE: why not >= x and < x + len
+            # NOTE: visulize this compute
             if y.ten > x and y.ten <= x + len:
                 r2 = break_end_coord(ctg=m[1], ori=m[0], pos=-1)
-                r2.pos = (
-                    st + (y.ten - x) - 1 if m[0] == ">" else st + (x + len - y.ten)
-                )  # Why - 1 here
+                # NOTE: why -1 for forward strand
+                r2.pos = st + (y.ten - x) - 1 if m[0] == ">" else st + (x + len - y.ten)
             x += len
     else:  # a contig
+        # NOTE: why output two end of a supp alignment
         r1 = break_end_coord(ctg=y.path, ori=">" if y.strand == "+" else "<", pos=-1)
         r1.pos = y.tst if y.strand == "+" else y.ten - 1
         r2 = break_end_coord(ctg=y.path, ori=">" if y.strand == "+" else "<", pos=-1)

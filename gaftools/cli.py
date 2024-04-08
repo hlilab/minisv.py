@@ -197,7 +197,7 @@ def sv(
                     options.cen[t[0]] = []
                 options.cen[t[0]].append([int(t[1]), int(t[2])])
             for ctg in options.cen:
-                options.cen[ctg].sort(lambda x: x[0])
+                options.cen[ctg].sort(key=lambda x: x[0])
     click.echo(options)
     click.echo(filename)
     load_reads(filename[0], options)

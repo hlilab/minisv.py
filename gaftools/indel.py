@@ -1,10 +1,8 @@
 import re
 from dataclasses import dataclass
 
-path_seg_pattern = re.compile(r"([><])([^><:\s]+):(\d+)-(\d+)")
-cigar_pattern = re.compile(r"(\d+)([=XIDM])")
-ds_pattern = re.compile(r"([\+\-\*:])([A-Za-z\[\]0-9]+)")
-re_tsd = re.compile(r"(\[([A-Za-z]+)\])?([A-Za-z]+)(\[([A-Za-z]+)\])?")
+from .annotation import cal_cen_dist
+from .regex import cigar_pattern, ds_pattern, path_seg_pattern, re_tsd
 
 
 @dataclass
@@ -19,7 +17,8 @@ class indel_coord:
     int_seq: str = "."
 
 
-dna_dict = {"a": "t", "t": "a", "g": "c", "c": "g"}
+# NOTE: why ignore n
+dna_dict = {"a": "t", "t": "a", "g": "c", "c": "g", "n": ""}
 
 
 def mg_revcomp(s):
@@ -255,6 +254,11 @@ def get_indel(opt, z):
                 else:
                     strand2 = "-" if y.strand == "+" else "+"
 
+                if s[0] in opt.cen:
+                    dist_st = cal_cen_dist(opt, s[0], sts[i][1])
+                    dist_en = cal_cen_dist(opt, s[0], ens[i][1])
+                    info1 += f";cen_dist={dist_st if dist_st < dist_en else dist_en}"
+
                 if sts[i][1] < ens[i][1]:
                     start = sts[i][1]
                 else:
@@ -265,7 +269,16 @@ def get_indel(opt, z):
                 else:
                     end = ens[i][1]
                 # [chrom, start, end, read_name, mapq, strand, indel length, tsd length, polyA length, indel seq]
-                print(s[0], start, end, y.qname, y.mapq, strand2, f"{info1};{info2}")
+                print(
+                    s[0],
+                    start,
+                    end,
+                    y.qname,
+                    y.mapq,
+                    strand2,
+                    f"{info1};{info2}",
+                    sep="\t",
+                )
             # indel on different segments
             # NOTE: shall we split the indel into multiple ones?
             else:
@@ -293,4 +306,5 @@ def get_indel(opt, z):
                     y.mapq,
                     "+",
                     f"{info1};{info2}",
+                    sep="\t",
                 )

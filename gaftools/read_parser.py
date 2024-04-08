@@ -62,6 +62,8 @@ def load_reads(input_file, opt):
                     tst=int(t[7]),
                     ten=int(t[8]),
                 )
+                if y.mapq < opt.min_mapq:
+                    continue
                 for i in range(12, len(t)):
                     if t[i][:5] == "cg:Z:":
                         y.cg = t[i][5:]
@@ -74,9 +76,9 @@ def load_reads(input_file, opt):
                     continue  # only primary alignment, filter secondary alignment
                 if y.cg is None:
                     continue
-                z.append(y)
             else:  # parse SAM format
                 continue
+            z.append(y)
         get_indel(opt, z)
         get_breakpoint(opt, z)
 

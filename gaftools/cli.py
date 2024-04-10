@@ -7,7 +7,7 @@ import rich_click as click
 
 from .cygaftools import GafParser as cy_GafParser
 from .gaftools import GafParser
-from .io import merge_indel_breakpoints
+from .io import merge_indel_breakpoints, write_vcf
 
 
 @dataclass
@@ -240,6 +240,32 @@ def merge(w: int, d: float, c: int, e: float, r: int, input):
 
     options = mergeopt(win_size=w, max_diff=d, min_cnt=c, min_cen_dist=e, min_rt_len=r)
     merge_sv(options, input)
+
+
+@cli.command()
+@click.argument("input", type=click.File("r"), default=sys.stdin)
+def vcf(input):
+    for line in input:
+        if line.startswith("#CHROM"):
+            print(
+                """##FORMAT=<ID=GT,Number=1,Type=String,Description="Genotype">
+##FORMAT=<ID=GQ,Number=1,Type=Integer,Description="Genotyping quality">
+##FORMAT=<ID=DR,Number=1,Type=Integer,Description="Number of reference reads">
+##FORMAT=<ID=DV,Number=1,Type=Integer,Description="Number of variant reads">
+##FORMAT=<ID=VAF,Number=1,Type=Float,Description="Variant allele frequency">"""
+            )
+            print(line.strip(), "FORMAT", "SAMPLE", sep="\t")
+        elif line.startswith("##"):
+            print(line.strip())
+        else:
+            print(line.strip(), "GT:GQ:VAF:DR:DV", "0/1:.:.:.:.", sep="\t")
+
+
+@cli.command()
+@click.argument("input", type=click.File("r"), default=sys.stdin)
+def mgutilvcf(input):
+    options = None
+    write_vcf(options, input)
 
 
 @cli.command()

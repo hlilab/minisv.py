@@ -128,6 +128,7 @@ def merge_sv(opt, input):
                 max_i = i
 
         # NOTE: do we merge cross-chromosome svs?
+        # yes, we select the median svs using >>1 index
         if max > 0 and max_i >= 0:
             sv[max_i].v.append(v)
             sv[max_i].pos_max = (
@@ -157,7 +158,7 @@ def same_sv(opt, v, w):
 
     # not on the same contig
     # NOTE: this not include the cross-chromomsome sv?
-    #       do we merge cross-chrom svs?
+    #       do we merge cross-chrom svs? yes
     if v.ctg != w.ctg:
         return False
 
@@ -167,12 +168,12 @@ def same_sv(opt, v, w):
 
     # test inversions
     if v.is_bp and w.is_bp and v.ori != w.ori:
-        # NOTE: this might be a bug in mgutils
-        if not ((v.ori == "><" and w.ori == "<>") or (v.ori == "<>" or w.ori == "><")):
+        # NOTE: clear
+        if not ((v.ori == "><" and w.ori == "<>") or (v.ori == "<>" and w.ori == "><")):
             return False
 
     # pos differ too much
-    # NOTE: may need to test on both chromomsome for cross-chrom translocation
+    # NOTE: clear
     if abs(v.pos - w.pos) > opt.win_size:
         return False
 
@@ -207,6 +208,7 @@ def write_sv(opt, s):
 
     # NOTE: what is this used for?
     #       are we always picking the zero index
+    #       this is for selecting the median sv from a set of overlapped svs
     v = s[len(s) >> 1]
 
     # filter by centromere distance

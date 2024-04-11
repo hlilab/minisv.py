@@ -226,7 +226,8 @@ def write_vcf(opt, input):
     print('##ALT=<ID=INS,Description="Insertion">')
     print('##ALT=<ID=DUP,Description="Duplication">')
     print('##ALT=<ID=INV,Description="Inversion">')
-    print("#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO")
+    print('##FORMAT=<ID=GT,Number=1,Type=String,Description="Genotype">')
+    print("#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\tFORMAT\tsample")
     key = {"SVTYPE": 1, "SVLEN": 1}
     for line in input:
         t = line.strip().split()
@@ -244,7 +245,19 @@ def write_vcf(opt, input):
         if type is None or type == "BND":
             continue
         info += f";END={t[4]}" if is_bp else f";END={t[2]}"
-        print(t[0], t[1], ".", "N", f"<{type}>", t[off_info - 2], ".", info, sep="\t")
+        print(
+            t[0],
+            t[1],
+            ".",
+            "N",
+            f"<{type}>",
+            t[off_info - 2],
+            ".",
+            info,
+            "GT",
+            "1/1",
+            sep="\t",
+        )
 
 
 # if __name__ == "__main__":

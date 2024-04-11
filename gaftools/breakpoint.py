@@ -141,7 +141,7 @@ def infer_svtype(opt, c0, c1, ori, qgap):
         )
 
     # long insertion with TSD
-    # NOTE: why not ">>", only "-" strand?
+    # NOTE: why not ">>", only "-" strand? Yes only "-" strand
     # l2 and l1 relative length condition? l2 > l1?
     if (
         ori == "<<"
@@ -171,7 +171,7 @@ def infer_svtype(opt, c0, c1, ori, qgap):
             st=st, en=en, str=f"SVTYPE=DUP;SVLEN={qgap+l1};sv_region={st},{en}"
         )
 
-    # NOTE: do we consider two reads?
+    # NOTE: do we consider two reads? inversion
     if (ori == "<>" or ori == "><") and l1 >= opt.min_len:
         st = c0.pos + qgap if qgap < 0 else c0.pos
         en = c1.pos + 1 - qgap if qgap < 0 else c1.pos + 1

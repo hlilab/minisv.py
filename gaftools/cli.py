@@ -258,6 +258,9 @@ def vcf(input):
         elif line.startswith("##"):
             print(line.strip())
         else:
+            line = line.split()
+            line[6] = "PASS"
+            line = "\t".join(line)
             print(line.strip(), "GT:GQ:VAF:DR:DV", "0/1:.:.:.:.", sep="\t")
 
 

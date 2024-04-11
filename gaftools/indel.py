@@ -16,6 +16,11 @@ class indel_coord:
     polyA_len: int = 0
     int_seq: str = "."
 
+    stl: int
+    enl: int
+    str: int
+    enr: int
+
 
 # NOTE: why ignore n
 dna_dict = {"a": "t", "t": "a", "g": "c", "c": "g", "n": ""}
@@ -114,6 +119,12 @@ def get_indel(opt, z):
         if len(a) == 0 or len(a) > opt.max_cnt:
             continue
 
+        # NOTE: what is this for?
+        # set stl/enl and str/enr
+        for i in range(len(a)):
+            a[i].stl = a[i].str = a[i].st
+            a[i].enl = a[i].enr = a[i].en
+
         # parse ds:Z tag
         if y.ds:
             # indel index for one read
@@ -169,6 +180,20 @@ def get_indel(opt, z):
                 a[i].int_seq = int_seq
                 if len(int_seq) > 0:
                     a[i].polyA_len = cal_polyA_len(opt, int_seq)
+
+                # NOTE: why is that
+                #       left TSD?
+                llen = len(m[1]) if m[1] is not None else 0
+                #       right TSD?
+                rlen = len(m[4]) if m[4] is not None else 0
+
+                # NOTE: adjust TSD length?
+                a[i].stl = a[i].st - rlen
+                a[i].enl = a[i].en - rlen
+                # NOTE: for right point, why not choose the minimum point by subtracting llen
+                #       Could CIGAR-based indel have l2 (qgap) < 0
+                a[i].str = a[i].st + llen
+                a[i].enr = a[i].en + llen
 
         # reference segments in the path
         seg = []
@@ -280,7 +305,7 @@ def get_indel(opt, z):
                     sep="\t",
                 )
             # indel on different segments
-            # NOTE: shall we split the indel into multiple ones?
+            # NOTE: shall we split the indel into multiple ones? No.
             else:
                 path = []
                 length = 0

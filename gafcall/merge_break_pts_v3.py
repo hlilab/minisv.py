@@ -62,14 +62,65 @@ def vcf_format(original, number):
                 ]
             )
         )
-    elif s[2] == "><": 
-        out.append('\t'.join([s[0],s[1],'bnd_' + str(number), 'N', 'N]' + s[3]+':'+ s[4]+']', qual, '.', 'SVTYPE=BND;MATEID=bnd_'+ str(number+1) + info]))
-        out.append('\t'.join([s[3],s[4],'bnd_' + str(number+1), 'N', 'N]' + s[0]+':'+ s[1]+']', qual, '.', 'SVTYPE=BND;MATEID=bnd_'+ str(number) + info]))
-      
+    elif s[2] == "><":
+        out.append(
+            "\t".join(
+                [
+                    s[0],
+                    s[1],
+                    "bnd_" + str(number),
+                    "N",
+                    "N]" + s[3] + ":" + s[4] + "]",
+                    qual,
+                    ".",
+                    "SVTYPE=BND;MATEID=bnd_" + str(number + 1) + info,
+                ]
+            )
+        )
+        out.append(
+            "\t".join(
+                [
+                    s[3],
+                    s[4],
+                    "bnd_" + str(number + 1),
+                    "N",
+                    "N]" + s[0] + ":" + s[1] + "]",
+                    qual,
+                    ".",
+                    "SVTYPE=BND;MATEID=bnd_" + str(number) + info,
+                ]
+            )
+        )
+
     else:
-        out.append('\t'.join([s[0],s[1],'bnd_' + str(number), 'N', '[' + s[3]+':'+ s[4]+'[N', qual, '.', 'SVTYPE=BND;MATEID=bnd_'+ str(number+1) + info]))
-        out.append('\t'.join([s[3],s[4],'bnd_' + str(number+1), 'N', '[' + s[0]+':'+ s[1]+'[N', qual, '.', 'SVTYPE=BND;MATEID=bnd_'+ str(number) + info]))
-                                
+        out.append(
+            "\t".join(
+                [
+                    s[0],
+                    s[1],
+                    "bnd_" + str(number),
+                    "N",
+                    "[" + s[3] + ":" + s[4] + "[N",
+                    qual,
+                    ".",
+                    "SVTYPE=BND;MATEID=bnd_" + str(number + 1) + info,
+                ]
+            )
+        )
+        out.append(
+            "\t".join(
+                [
+                    s[3],
+                    s[4],
+                    "bnd_" + str(number + 1),
+                    "N",
+                    "[" + s[0] + ":" + s[1] + "[N",
+                    qual,
+                    ".",
+                    "SVTYPE=BND;MATEID=bnd_" + str(number) + info,
+                ]
+            )
+        )
 
     return out
 
@@ -168,5 +219,5 @@ if __name__ == "__main__":
         for line in f:
             lines.append(line.strip().split("\t"))
     bed, vcf = merge_breaks(lines, margin, min_support)
-    sys.stdout.write('\n'.join(bed))
-    #sys.stdout.write("\n".join(vcf))
+    sys.stdout.write("\n".join(bed))
+    # sys.stdout.write("\n".join(vcf))

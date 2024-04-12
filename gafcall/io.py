@@ -3,10 +3,12 @@ We could put the output interface into this submodule as well.
 """
 # import argparse
 import gzip
+import re
 from dataclasses import dataclass
 
+from .regex import re_info
+
 # from .identify_breaks_v5 import call_breakpoints
-# from gaftools.merge_break_pts_v3 import merge_breaks
 
 
 @dataclass
@@ -206,6 +208,55 @@ def merge_breakpoint_indel_vcf(prefix, indel_vcf, breakpoint_vcf):
 
     merged_vcf_handler.close()
     return merged_vcf
+
+
+def write_vcf(opt, input):
+    print("##fileformat=VCFv4.3")
+    print(
+        '##INFO=<ID=SVTYPE,Number=1,Type=String,Description="Type of structural variant">'
+    )
+    print(
+        '##INFO=<ID=SVLEN,Number=.,Type=Integer,Description="Difference in length between REF and ALT alleles">'
+    )
+    print(
+        '##INFO=<ID=END,Number=1,Type=Integer,Description="End position of the variant described in this record">'
+    )
+    print('##ALT=<ID=DEL,Description="Deletion">')
+    print('##ALT=<ID=INS,Description="Insertion">')
+    print('##ALT=<ID=DUP,Description="Duplication">')
+    print('##ALT=<ID=INV,Description="Inversion">')
+    print('##FORMAT=<ID=GT,Number=1,Type=String,Description="Genotype">')
+    print("#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\tFORMAT\tsample")
+    key = {"SVTYPE": 1, "SVLEN": 1}
+    for line in input:
+        t = line.strip().split()
+        is_bp = re.match(r"[><]", t[2])
+        off_info = 8 if is_bp else 6
+        type = None
+        info = ""
+        for m in re_info.findall(t[off_info]):
+            if m[0] in key:
+                if len(info) > 0:
+                    info += ";"
+                info += f"{m[0]}={m[1]}"
+            if m[0] == "SVTYPE":
+                type = m[1]
+        if type is None or type == "BND":
+            continue
+        info += f";END={t[4]}" if is_bp else f";END={t[2]}"
+        print(
+            t[0],
+            t[1],
+            ".",
+            "N",
+            f"<{type}>",
+            t[off_info - 2],
+            ".",
+            info,
+            "GT",
+            "1/1",
+            sep="\t",
+        )
 
 
 # if __name__ == "__main__":

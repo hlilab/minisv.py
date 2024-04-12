@@ -315,7 +315,7 @@ class GafParser(object):
         vcf_output = open(f"{self.output}_mergedindel.vcf", "w")
         # refer to severus and sniffle2
         hdr = ["##fileformat=VCFv4.2"]
-        hdr.append("##source=gaftools1.0")
+        hdr.append("##source=gafcall1.0")
         hdr.append(f'##command="{command}"')
         hdr.append(f'##fileDate="{formatted_time}"')
 
@@ -464,7 +464,7 @@ class GafParser(object):
                     # GT:GQ:VAF:DR:DV 0|1:279:0.45:36:29
                     # Not sure how to decide GT, GQ and VAF, DR yet
                     vcf_output.write(
-                        f"{line[0]}\t{start}\tgaftools1.{type}.{indel_num}\tN\t{ALT}\t.\tPASS\tEND={end};SVTYPE={type};SVLEN={line[3]};TSDLEN={line[4]};POLYALEN={line[5]};DETAILED_TYPE=None;MAPQ={mapq};SUPPREAD={line[7]};VNTR={VNTR};CENTROMERE={CENT};RNAMES={reads}\tGT:GQ:VAF:DR:DV\t.:.:.:.:{line[7]}\n"
+                        f"{line[0]}\t{start}\tgafcall1.{type}.{indel_num}\tN\t{ALT}\t.\tPASS\tEND={end};SVTYPE={type};SVLEN={line[3]};TSDLEN={line[4]};POLYALEN={line[5]};DETAILED_TYPE=None;MAPQ={mapq};SUPPREAD={line[7]};VNTR={VNTR};CENTROMERE={CENT};RNAMES={reads}\tGT:GQ:VAF:DR:DV\t.:.:.:.:{line[7]}\n"
                     )
                     indel_num += 1
         vcf_output.close()

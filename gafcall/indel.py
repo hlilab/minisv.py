@@ -16,10 +16,10 @@ class indel_coord:
     polyA_len: int = 0
     int_seq: str = "."
 
-    stl: int
-    enl: int
-    str: int
-    enr: int
+    stl: int = 0
+    enl: int = 0
+    str: int = 0
+    enr: int = 0
 
 
 # NOTE: why ignore n

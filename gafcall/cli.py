@@ -5,8 +5,8 @@ from dataclasses import dataclass
 
 import rich_click as click
 
-from .cygaftools import GafParser as cy_GafParser
-from .gaftools import GafParser
+##from .cygafcall import GafParser as cy_GafParser
+from .gafcall import GafParser
 from .io import merge_indel_breakpoints, write_vcf
 
 
@@ -235,7 +235,7 @@ def sv(
 )  # NOTE: in mgutils, this is forced to be int
 @click.argument("input", type=click.File("r"), default=sys.stdin)
 def merge(w: int, d: float, c: int, e: float, r: int, input):
-    """Usage: sort -k 1,1 -k2,2n sv.bed | gaftools merge [options] -"""
+    """Usage: sort -k 1,1 -k2,2n sv.bed | gafcall merge [options] -"""
     from .merge import merge_sv
 
     options = mergeopt(win_size=w, max_diff=d, min_cnt=c, min_cen_dist=e, min_rt_len=r)
@@ -352,48 +352,48 @@ def getindel(
     gafs.merge_indel(min_cnt=support_read, min_mapq=mapq)
 
 
-@cli.command()
-@click.option(
-    "-i",
-    "--input",
-    required=True,
-    type=click.Path(exists=True),
-    help="input gaf/paf file",
-)
-@click.option(
-    "-r", "--support_read", required=True, type=int, help="supported read threshold"
-)
-@click.option("-m", "--mapq", required=True, type=int, help="read mapping quality")
-@click.option(
-    "-c", "--cpu", required=True, type=int, default=1, help="read mapping quality"
-)
-@click.option("-l", "--mlen", required=True, type=int, help="min indel length")
-@click.option(
-    "-n",
-    "--normal",
-    required=False,
-    type=str,
-    help="paired normal sample input gaf/paf file if tumor-only and normal-only mode, skip this option",
-)
-@click.option(
-    "-p", "--prefix", required=True, type=str, help="output prefix for table and figure"
-)
-@click.option("-v", "--verbose", is_flag=True, help="verbose option for debug")
-def getindel_cython(
-    input: str,
-    support_read: int,
-    mapq: int,
-    cpu: int,
-    mlen: int,
-    normal: str,
-    prefix: str,
-    verbose: bool,
-):
-    """Get indel reads and merge the microhomology reads into large indels"""
-    print("get cython indel...")
-    command = " ".join(sys.argv)
-    input_samples = [input, normal] if normal is not None else [input]
-    gafs = cy_GafParser(input_samples, prefix)
-    gafs.parse_indel(mapq, mlen, verbose, n_cpus=cpu)
-    gafs.merge_indel(min_cnt=support_read, min_mapq=mapq)
-    gafs.bed2vcf(command=command)
+# @cli.command()
+# @click.option(
+#    "-i",
+#    "--input",
+#    required=True,
+#    type=click.Path(exists=True),
+#    help="input gaf/paf file",
+# )
+# @click.option(
+#    "-r", "--support_read", required=True, type=int, help="supported read threshold"
+# )
+# @click.option("-m", "--mapq", required=True, type=int, help="read mapping quality")
+# @click.option(
+#    "-c", "--cpu", required=True, type=int, default=1, help="read mapping quality"
+# )
+# @click.option("-l", "--mlen", required=True, type=int, help="min indel length")
+# @click.option(
+#    "-n",
+#    "--normal",
+#    required=False,
+#    type=str,
+#    help="paired normal sample input gaf/paf file if tumor-only and normal-only mode, skip this option",
+# )
+# @click.option(
+#    "-p", "--prefix", required=True, type=str, help="output prefix for table and figure"
+# )
+# @click.option("-v", "--verbose", is_flag=True, help="verbose option for debug")
+# def getindel_cython(
+#    input: str,
+#    support_read: int,
+#    mapq: int,
+#    cpu: int,
+#    mlen: int,
+#    normal: str,
+#    prefix: str,
+#    verbose: bool,
+# ):
+#    """Get indel reads and merge the microhomology reads into large indels"""
+#    print("get cython indel...")
+#    command = " ".join(sys.argv)
+#    input_samples = [input, normal] if normal is not None else [input]
+#    gafs = cy_GafParser(input_samples, prefix)
+#    gafs.parse_indel(mapq, mlen, verbose, n_cpus=cpu)
+#    gafs.merge_indel(min_cnt=support_read, min_mapq=mapq)
+#    gafs.bed2vcf(command=command)

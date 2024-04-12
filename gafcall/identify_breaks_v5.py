@@ -2,7 +2,7 @@
 
 import argparse
 
-from gaftools.io import load_gaf_to_grouped_reads
+from gafcall.io import load_gaf_to_grouped_reads
 
 
 # function to return final node in graph path as this is where the BND is occuring

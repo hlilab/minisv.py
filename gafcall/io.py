@@ -9,7 +9,6 @@ from dataclasses import dataclass
 from .regex import re_info
 
 # from .identify_breaks_v5 import call_breakpoints
-# from gaftools.merge_break_pts_v3 import merge_breaks
 
 
 @dataclass

@@ -735,13 +735,13 @@ function main(args)
 		print("Usage: gafcall.js <command> [arguments]");
 		print("Commands:");
 		print("  extract      extract long INDELs and breakpoints from GAF");
-		print("  merge        merge svget INDELs and breakpoints");
+		print("  merge        merge extracted INDELs and breakpoints");
 		exit(1);
 	}
 
 	var cmd = args.shift();
-	if (cmd === "extract" || cmd === "getsv" || cmd === "svget") gc_cmd_extract(args);
-	else if (cmd === "merge" || cmd === "mergesv" || cmd === "svmerge") gc_cmd_merge(args);
+	if (cmd === "extract" || cmd === "getsv") gc_cmd_extract(args);
+	else if (cmd === "merge" || cmd === "mergesv") gc_cmd_merge(args);
 	else throw Error("unrecognized command: " + cmd);
 }
 

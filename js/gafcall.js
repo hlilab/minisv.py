@@ -86,6 +86,61 @@ function* k8_readline(fn) {
 	buf.destroy();
 }
 
+// interal query
+function iit_sort_copy(a) {
+	a.sort((x, y) => (x.st - y.st));
+	const b = [];
+	for (let i = 0; i < a.length; ++i)
+		b.push({ st: a[i].st, en: a[i].en, max: 0, data: a[i].data });
+	return b;
+}
+
+function iit_index(a) {
+	if (a.length == 0) return -1;
+	let last, last_i, k;
+	for (let i = 0; i < a.length; i += 2) last = a[i].max = a[i].en, last_i = i;
+	for (k = 1; 1<<k <= a.length; ++k) {
+		const i0 = (1<<k) - 1, step = 1<<(k+1), x = 1<<(k-1);
+		for (let i = i0; i < a.length; i += step) {
+			a[i].max = a[i].en;
+			if (a[i].max < a[i-x].max) a[i].max = a[i-x].max;
+			const e = i + x < a.length? a[i+x].max : last;
+			if (a[i].max < e) a[i].max = e;
+		}
+		last_i = last_i>>k&1? last_i - x : last_i + x;
+		if (last_i < a.length) last = last > a[last_i].max? last : a[last_i].max;
+	}
+	return k - 1;
+}
+
+function iit_overlap(a, st, en) {
+	let h = 0;
+	const stack = [], b = [];
+	for (h = 0; 1<<h <= a.length; ++h);
+	--h;
+	stack.push([(1<<h) - 1, h, 0]);
+	while (stack.length) {
+		const t = stack.pop();
+		const x = t[0], h = t[1], w = t[2];
+		if (h <= 3) {
+			const i0 = x >> h << h;
+			let i1 = i0 + (1<<(h+1)) - 1;
+			if (i1 >= a.length) i1 = a.length;
+			for (let i = i0; i < i1 && a[i].st < en; ++i)
+				if (st < a[i].en) b.push(a[i]);
+		} else if (w == 0) { // if left child not processed
+			stack.push([x, h, 1]);
+			const y = x - (1<<(h-1));
+			if (y >= a.length || a[y].max > st)
+				stack.push([y, h - 1, 0]);
+		} else if (x < a.length && a[x].st < en) {
+			if (st < a[x].en) b.push(a[x]);
+			stack.push([x + (1<<(h-1)), h - 1, 0]);
+		}
+	}
+	return b;
+}
+
 /********************************
  * Extract SVs from GAF/PAF/SAM *
  ********************************/
@@ -233,7 +288,7 @@ function gc_cmd_extract(args) {
 				if (op == "M" || op == "=" || op == "X" || op == "D")
 					x += len;
 			}
-			if (a.length == 0 || a.length > y.qlen * 1e-4 * opt.max_cnt) continue;
+			if (a.length == 0 || a.length > y.qlen * 1e-4 * opt.max_cnt_10k) continue;
 			// set stl/enl and str/enr
 			for (let i = 0; i < a.length; ++i) {
 				a[i].stl = a[i].str = a[i].st;
@@ -509,7 +564,7 @@ function gc_cmd_merge(args) {
 	let opt = { min_cnt:3, min_cnt_strand:2, min_cnt_rt:1, min_rt_len:10, win_size:100, max_diff:0.05, min_cen_dist:500000, max_allele:100, max_check:500 };
 	for (const o of getopt(args, "w:d:c:e:r:R:s:A:C:")) {
 		if (o.opt === "-w") opt.win_size = parseInt(o.arg);
-		else if (o.opt === "-d") opt.max_diff = parseInt(o.arg);
+		else if (o.opt === "-d") opt.max_diff = parseFloat(o.arg);
 		else if (o.opt === "-c") opt.min_cnt = parseInt(o.arg);
 		else if (o.opt === "-s") opt.min_cnt_strand = parseInt(o.arg);
 		else if (o.opt === "-e") opt.min_cen_dist = parseInt(o.arg);
@@ -575,7 +630,7 @@ function gc_cmd_merge(args) {
 		if (v.ctg != w.ctg) return false; // not on the same contig
 		if (v.SVTYPE != w.SVTYPE) return false; // not the same type
 		if (v.is_bp && w.is_bp && v.ori != w.ori) { // test inversions
-			if (!((v.ori === "><" && w.ori === "<>") || (v.ori === "<>" || w.ori === "><")))
+			if (!((v.ori === "><" && w.ori === "<>") || (v.ori === "<>" && w.ori === "><")))
 				return false;
 		}
 		if (v.pos - w.pos > opt.win_size || w.pos - v.pos > opt.win_size) return false; // pos differ too much
@@ -684,6 +739,20 @@ function gc_cmd_merge(args) {
 	while (sv.length)
 		write_sv(opt, sv.shift().v);
 }
+
+/**************
+ * Evaluation *
+ **************/
+
+function gc_cmd_eval(args) {
+	let opt = {};
+	for (const o of getopt(args, "")) {
+	}
+}
+
+/*******************************
+ * Convert to VCF (unfinished) *
+ *******************************/
 
 function mg_cmd_sv2vcf(args) {
 	let opt = { };

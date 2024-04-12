@@ -1,6 +1,6 @@
 #!/usr/bin/env k8
 
-const version = "r578";
+const version = "r77";
 
 /**************
  * From k8.js *
@@ -86,155 +86,16 @@ function* k8_readline(fn) {
 	buf.destroy();
 }
 
-/***************
- * Subcommands *
- ***************/
-
-function mg_cmd_merge2vcf(args) {
-	let opt = { max_allele:15, ref_index:0, fn_sample:null, sample:[] };
-	for (const o of getopt(args, "r:a:s:", [])) {
-		if (o.opt == "-r") opt.ref_index = parseInt(o.arg);
-		else if (o.opt == "-a") opt.max_allele = parseInt(o.arg);
-		else if (o.opt == "-s") opt.fn_sample = o.arg;
-	}
-	if (args.length == 0) {
-		print(`Usage: mgutils-es6.js merge2vcf [options] <in.bed>`);
-		print(`Options:`);
-		print(`  -r INT    which sample corresponds to the reference [${opt.ref_index}]`);
-		print(`  -a INT    max allele number [${opt.max_allele}]`);
-		print(`  -s FILE   list of sample names, one per line []`);
-		return;
-	}
-	let file, buf = new Bytes();
-	if (opt.fn_sample) {
-		file = new File(opt.fn_sample);
-		while (file.readline(buf) >= 0) {
-			const t = buf.toString().split(/\s+/);
-			opt.sample.push(t[0]);
-		}
-		file.close();
-	}
-	file = new File(args[0]);
-	let hdr = [];
-	hdr.push(`##fileformat=VCFv4.2`);
-	hdr.push(`##ALT=<ID=CNV,Description="description">`);
-	hdr.push(`##FORMAT=<ID=GT0,Number=1,Type=String,Description="Original genotype">`);
-	for (let i = 1; i <= opt.max_allele; ++i)
-		hdr.push(`##ALT=<ID=X:${i},Description="Allele ${i}">`);
-	let n_sample = opt.sample.length;
-	while (file.readline(buf) >= 0) {
-		let line = buf.toString();
-		if (line[0] == "#" && line[1] == "#") {
-			hdr.push(line);
-		} else if (line[0] == '#') {
-			let t = line.split("\t");
-			let a = ["CHROM", "POS", "ID", "REF", "ALT", "QUAL", "FILTER", "INFO", "FORMAT"];
-			if (t.length <= 5) {
-				if (opt.sample.length == 0)
-					throw Error("No samples found. Please provide sample names with option '-s'");
-				for (let i = 0; i < opt.sample.length; ++i)
-					a.push(opt.sample[i]);
-			} else {
-				for (let i = 6; i < t.length; ++i)
-					a.push(t[i]);
-			}
-			for (let i = 0; i < hdr.length; ++i)
-				print(hdr[i]);
-			print(`#${a.join("\t")}`);
-		} else {
-			let t = buf.toString().split("\t");
-			if (n_sample == 0) n_sample = t.length - 5;
-			if (n_sample != t.length - 5) throw Error("different number of samples");
-			let a = [t[0], t[1], ".", "N", "", "30", "PASS"]
-			let m, ref = -1;
-			if ((m = /^(\d+)/.exec(t[5 + opt.ref_index])) != null)
-				ref = parseInt(m[1]);
-			if ((m = /\bNA=(\d+)/.exec(t[3])) == null) throw Error("No NA tag");
-			let na = parseInt(m[1]), a2v = [];
-			for (let i = 0; i < na; ++i)
-				a2v[i] = i;
-			if (ref >= 0) {
-				for (let i = 0; i < ref; ++i)
-					a2v[i] = i + 1;
-				a2v[ref] = 0;
-			}
-			let al = [];
-			for (let i = 1; i < na && i <= opt.max_allele; ++i)
-				al.push(`<X:${i}>`);
-			a[4] = al.length? al.join(",") : ".";
-			let info = [`END=${t[2]}`];
-			const re = /([^\s=;]+)=([^\s=;]+)/g;
-			while ((m = re.exec(t[3])) != null) {
-				if (m[1] == "ALEN" || m[1] == "AWALK" || m[1] == "AC") {
-					const s = m[2].split(",");
-					if (s.length != na) throw Error("Inconsistent number of alleles");
-					let p = [];
-					if (m[1] == "AC") {
-						for (let i = 0; i < s.length; ++i)
-							if (a2v[i] != 0)
-								p.push(s[i]);
-					} else {
-						for (let i = 0; i < s.length; ++i)
-							p[a2v[i]] = s[i];
-					}
-					if (m[1] != "AC" || p.length > 0)
-						info.push(`${m[1]}=${p.join(",")}`);
-				} else if (m[1] == "NS") {
-					info.push(`AN=${m[2]}`);
-					info.push(`${m[1]}=${m[2]}`);
-				} else {
-					info.push(`${m[1]}=${m[2]}`);
-				}
-			}
-			a.push(info.join(";"), "GT:GT0");
-			for (let i = 5; i < t.length; ++i) {
-				if (t[i] == ".") {
-					a.push(".");
-				} else if ((m = /^(\d+)(\S*)/.exec(t[i])) != null) {
-					const al = a2v[parseInt(m[1])];
-					const al_cap = al < opt.max_allele? al : opt.max_allele;
-					a.push(`${al_cap}:${al}`);
-				}
-			}
-			print(a.join("\t"));
-		}
-	}
-	file.close();
-	buf.destroy();
-}
-
-function mg_cmd_addsample(args) {
-	if (args.length < 2) {
-		print("Usage: mgutils-es6.js addsample <merged.bed> <sample.txt>");
-		return;
-	}
-	let file, buf = new Bytes();
-	file = new File(args[1]);
-	let sample = [];
-	while (file.readline(buf) >= 0) {
-		let t = buf.toString().split(/\s+/);
-		sample.push(t[0]);
-	}
-	file.close();
-	file = new File(args[0]);
-	while (file.readline(buf) >= 0) {
-		const line = buf.toString();
-		if (line[0] != "#" || (line[0] == "#" && line[1] == "#")) {
-			print(buf);
-		} else {
-			print("#CHROM", "START", "END", "INFO", "FORMAT", sample.join("\t"));
-		}
-	}
-	file.close();
-	buf.destroy();
-}
+/********************************
+ * Extract SVs from GAF/PAF/SAM *
+ ********************************/
 
 function mg_revcomp(s) {
 	function complement(x) { return { a:'t', t:'a', g:'c', c:'g' }[x] }
 	return s.split('').reverse().map(complement).join('');
 }
 
-function mg_cmd_getsv(args) {
+function gc_cmd_extract(args) {
 	let opt = { min_mapq:5, min_mapq_end:30, min_frac:0.7, min_len:100, min_aln_len_end:2000, min_aln_len_mid:50, max_cnt_10k:3,
 				dbg:false, polyA_pen:5, polyA_drop:100, name:"foo", cen:{} };
 	for (const o of getopt(args, "q:Q:l:dc:a:e:m:n:b:", [])) {
@@ -259,7 +120,7 @@ function mg_cmd_getsv(args) {
 		}
 	}
 	if (args.length == 0) {
-		print("Usage: mgutils-es6.js getsv [options] <stable.gaf>");
+		print("Usage: gafcall.js extract [options] <stable.gaf>");
 		print("Options:");
 		print(`  -n STR     sample name [${opt.name}]`);
 		print(`  -q INT     min mapq [${opt.min_mapq}]`);
@@ -640,7 +501,11 @@ function mg_cmd_getsv(args) {
 	get_breakpoint(opt, z);
 }
 
-function mg_cmd_mergesv(args) {
+/*************************
+ * Merge extracted calls *
+ *************************/
+
+function gc_cmd_merge(args) {
 	let opt = { min_cnt:3, min_cnt_strand:2, min_cnt_rt:1, min_rt_len:10, win_size:100, max_diff:0.05, min_cen_dist:500000, max_allele:100, max_check:500 };
 	for (const o of getopt(args, "w:d:c:e:r:R:s:A:C:")) {
 		if (o.opt === "-w") opt.win_size = parseInt(o.arg);
@@ -654,7 +519,7 @@ function mg_cmd_mergesv(args) {
 		else if (o.opt === "-C") opt.max_check = parseInt(o.arg);
 	}
 	if (args.length == 0) {
-		print("Usage: sort -k1,1 -k2,2n getsv.txt | mgutils-es6.js mergesv [options] -");
+		print("Usage: sort -k1,1 -k2,2n extract.output | gafcall.js merge [options] -");
 		print("Options:");
 		print(`  -c INT     min read count [${opt.min_cnt}]`);
 		print(`  -s INT     min read count on each strand [${opt.min_cnt_strand}]`);
@@ -867,22 +732,16 @@ function mg_cmd_sv2vcf(args) {
 function main(args)
 {
 	if (args.length == 0) {
-		print("Usage: mgutils-es6.js <command> [arguments]");
+		print("Usage: gafcall.js <command> [arguments]");
 		print("Commands:");
-		print("  merge2vcf    convert merge BED output to VCF");
-		print("  addsample    add sample names to merged BED (as a fix)");
-		print("  svget        extract long INDELs and breakpoints from GAF");
-		print("  svmerge      merge svget INDELs and breakpoints");
-		print("  sv2vcf       convert svmerge output to VCF");
+		print("  extract      extract long INDELs and breakpoints from GAF");
+		print("  merge        merge svget INDELs and breakpoints");
 		exit(1);
 	}
 
 	var cmd = args.shift();
-	if (cmd === "merge2vcf") mg_cmd_merge2vcf(args);
-	else if (cmd === "addsample") mg_cmd_addsample(args);
-	else if (cmd === "getsv" || cmd === "svget") mg_cmd_getsv(args);
-	else if (cmd === "mergesv" || cmd === "svmerge") mg_cmd_mergesv(args);
-	else if (cmd === "sv2vcf") mg_cmd_sv2vcf(args);
+	if (cmd === "extract" || cmd === "getsv" || cmd === "svget") gc_cmd_extract(args);
+	else if (cmd === "merge" || cmd === "mergesv" || cmd === "svmerge") gc_cmd_merge(args);
 	else throw Error("unrecognized command: " + cmd);
 }
 

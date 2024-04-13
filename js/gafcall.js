@@ -807,19 +807,94 @@ function gc_parse_sv(opt, fn) {
 	return sv;
 }
 
+function gc_cmp_sv(opt, base, test, label) {
+	let h = {};
+	for (let i = 0; i < base.length; ++i) {
+		const s = base[i];
+		if (h[s.ctg] == null) h[s.ctg] = [];
+		if (h[s.ctg2] == null) h[s.ctg2] = [];
+		h[s.ctg].push({ st:s.pos, en:s.pos+1, data:s });
+		h[s.ctg2].push({ st:s.pos2, en:s.pos2+1, data:s });
+	}
+	for (const ctg in h) {
+		h[ctg] = iit_sort_copy(h[ctg]);
+		iit_index(h[ctg]);
+	}
+
+	function same_sv1(opt, b, t) { // compare two SVs
+		// check type
+		if (b.svtype != t.svtype) { // type mismatch
+			if (!(b.svtype === "DUP" && t.svtype === "INS") && !(b.svtype === "INS" && t.svtype === "DUP")) // special case for INS vs DUP
+				return false;
+		}
+		// check length
+		const len_check = (Math.abs(b.svlen) >= Math.abs(t.svlen) * opt.min_len_ratio && Math.abs(t.svlen) >= Math.abs(b.svlen) * opt.min_len_ratio);
+		if (b.svtype != "BND" && !len_check) return false;
+		// check the coordinates of end points
+		let match1 = 0, match2 = 0;
+		if (t.ctg == b.ctg   && t.pos >= b.pos - opt.win_size   && t.pos <= b.pos + opt.win_size)   match1 |= 1;
+		if (t.ctg == b.ctg2  && t.pos >= b.pos2 - opt.win_size  && t.pos <= b.pos2 + opt.win_size)  match1 |= 2;
+		if (t.ctg2 == b.ctg  && t.pos2 >= b.pos - opt.win_size  && t.pos2 <= b.pos + opt.win_size)  match2 |= 1;
+		if (t.ctg2 == b.ctg2 && t.pos2 >= b.pos2 - opt.win_size && t.pos2 <= b.pos2 + opt.win_size) match2 |= 2;
+		if (b.svtype === "DUP" && t.svtype === "INS") {
+			return ((match1&1) != 0 && (match2&1) != 0);
+		} else if (b.svtype === "INS" && t.svtype === "DUP") {
+			return ((match1&1) != 0);
+		} else if (b.svtype === "BND") {
+			return (((match1&1) != 0 && (match2&2) != 0) || ((match1&2) != 0 && (match2&1) != 0));
+		} else {
+			return ((match1&1) != 0 && (match2&2) != 0);
+		}
+	}
+
+	function eval1(opt, h, ctg, pos, t) {
+		if (h[ctg] == null) return false;
+		const st = pos > opt.win_size? pos - opt.win_size : 0;
+		const en = pos + opt.win_size;
+		const a = iit_overlap(h[ctg], st, en);
+		let n = 0;
+		for (let i = 0; i < a.length; ++i)
+			if (same_sv1(opt, a[i].data, t))
+				++n;
+		return n;
+	}
+
+	let error = 0;
+	for (let j = 0; j < test.length; ++j) {
+		const t = test[j];
+		if (t.svtype != "BND" && t.svlen > -opt.min_eval_len && t.svlen < opt.min_eval_len) continue; // not long enough
+		const n = eval1(opt, h, t.ctg, t.pos, t) + eval1(opt, h, t.ctg2, t.pos2, t);
+		if (n == 0) {
+			++error;
+			if (opt.print_err)
+				print(label, t.ctg, t.pos, t.ori, t.ctg2, t.pos2, t.svtype, t.svlen);
+		}
+	}
+	return error;
+}
+
 function gc_cmd_eval(args) {
-	let opt = { min_len_read:30, dbg:false };
-	for (const o of getopt(args, "dr:")) {
+	let opt = { min_len_read:30, min_eval_len:50, win_size:500, min_len_ratio:0.6, dbg:false, print_err:false };
+	for (const o of getopt(args, "dr:w:e")) {
 		if (o.opt === "-d") opt.dbg = true;
 		else if (o.opt === "-r") opt.min_len_read = parseInt(o.arg);
+		else if (o.opt === "-w") opt.win_size = parseInt(o.arg);
+		else if (o.opt === "-e") opt.print_err = true;
 	}
-	if (args.length == 0) {
+	if (args.length < 2) {
 		print("Usgae: gafcall.js eval [options] <base.vcf> <test.vcf>");
 		print("Options:");
+		print(`  -w INT      fuzzy window size [${opt.win_size}]`);
 		print(`  -r INT      min SVLEN to read [${opt.min_len_read}]`);
+		print(`  -e          print errors`);
 		return;
 	}
-	const sv_base = gc_parse_sv(opt, args[0]);
+	const base = gc_parse_sv(opt, args[0]);
+	const test = gc_parse_sv(opt, args[1]);
+	const fn = gc_cmp_sv(opt, test, base, "FN");
+	const fp = gc_cmp_sv(opt, base, test, "FP");
+	print("RN", base.length, fn, (fn / base.length).toFixed(4));
+	print("RP", test.length, fp, (fp / test.length).toFixed(4));
 }
 
 /*******************************

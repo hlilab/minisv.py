@@ -744,10 +744,82 @@ function gc_cmd_merge(args) {
  * Evaluation *
  **************/
 
-function gc_cmd_eval(args) {
-	let opt = {};
-	for (const o of getopt(args, "")) {
+function gc_parse_sv(opt, fn) {
+	let sv = [];
+	for (const line of k8_readline(fn)) {
+		if (line[0] === "#") continue;
+		let m, t = line.split("\t");
+		if (!/^\d+$/.test(t[1])) continue;
+		//print("X", line);
+		t[1] = parseInt(t[1]);
+		let type = 0, info = null;
+		if (/^[><][><]$/.test(t[2])) type = 3, info = t[8]; // breakpoint
+		else if (/;/.test(t[7])) type = 1, info = t[7]; // VCF
+		else if (/^\d+$/.test(t[2]) && /;/.test(t[6])) type = 2, info = t[6]; // BED
+		if (type == 0) continue;
+		let svtype = null, svlen = 0;
+		if ((m = /SVTYPE=([^\s;]+)/.exec(info)) != null)
+			svtype = m[1];
+		if ((m = /SVLEN=([^\s;]+)/.exec(info)) != null)
+			svlen = parseFloat(m[1]);
+		if (type == 2) { // BED line
+			t[2] = parseInt(t[2]);
+			if (t[1] > t[2]) throw("incorrected BED?");
+			sv.push({ ctg:t[0], pos:t[1], ctg2:t[0], pos2:t[2], ori:">>", svtype:svtype, svlen:svlen });
+		} else if (type == 3) { // breakpoint line
+			t[4] = parseInt(t[4]);
+			sv.push({ ctg:t[0], pos:t[1], ctg2:t[3], pos2:t[4], ori:t[2], svtype:svtype, svlen:svlen });
+		} else if (type == 1) { // VCF line
+			let rlen = t[3].length, en = t[1] + rlen - 1;
+			let s = { ctg:t[0], pos:t[1]-1, ctg2:t[0], pos2:en, ori:">>" };
+			if (/^[A-Z,]+$/.test(t[4])) { // assume full allele sequence; override SVTYPE/SVLEN even if present
+				let alt = t[4].split(",");
+				for (let i = 0; i < alt.length; ++i) {
+					const a = alt[i], len = a.length - rlen;
+					if (Math.abs(len) < opt.min_len_read) continue;
+					if (len < 0)
+						sv.push({ ctg:s.ctg, pos:s.pos, ctg2:s.ctg, pos2:en, svtype:"DEL", svlen:len, ori:">>" });
+					else
+						sv.push({ ctg:s.ctg, pos:s.pos, ctg2:s.ctg, pos2:en, svtype:"INS", svlen:len, ori:">>" });
+				}
+			} else { // other SV encoding
+				if (svtype == null) throw Error("can't determine SVTYPE"); // we don't infer SVTYPE from breakpoint
+				s.svtype = svtype;
+				if (svtype != "BND" && Math.abs(svlen) < opt.min_len_read) continue; // too short
+				if (svtype === "DEL" && svlen > 0) svlen = -svlen; // correct SVLEN as some VCF encodes this differently
+				s.svlen = svlen;
+				if ((m = /\bEND=(\d+)/.exec(info)) != null)
+					s.pos2 = parseInt(m[1]);
+				if ((m = /^[A-Z]\[([^s:]+):(\d+)\[$/.exec(t[4])) != null) s.ctg2 = m[1], s.pos2 = parseInt(m[2]), s.ori = ">>";
+				else if ((m = /^\]([^s:]+):(\d+)\][A-Z]$/.exec(t[4])) != null) s.ctg2 = m[1], s.pos2 = parseInt(m[2]), s.ori = "<<";
+				else if ((m = /^\[([^s:]+):(\d+)\[[A-Z]$/.exec(t[4])) != null) s.ctg2 = m[1], s.pos2 = parseInt(m[2]), s.ori = "><";
+				else if ((m = /^[A-Z]\]([^s:]+):(\d+)\]$/.exec(t[4])) != null) s.ctg2 = m[1], s.pos2 = parseInt(m[2]), s.ori = "<>";
+				sv.push(s);
+			}
+		}
 	}
+	if (opt.dbg) {
+		for (let i = 0; i < sv.length; ++i) {
+			const s = sv[i];
+			print(s.ctg, s.pos, s.ori, s.ctg2, s.pos2, s.svtype, s.svlen);
+		}
+	}
+	return sv;
+}
+
+function gc_cmd_eval(args) {
+	let opt = { min_len_read:30, dbg:false };
+	for (const o of getopt(args, "dr:")) {
+		if (o.opt === "-d") opt.dbg = true;
+		else if (o.opt === "-r") opt.min_len_read = parseInt(o.arg);
+	}
+	if (args.length == 0) {
+		print("Usgae: gafcall.js eval [options] <base.vcf> <test.vcf>");
+		print("Options:");
+		print(`  -r INT      min SVLEN to read [${opt.min_len_read}]`);
+		return;
+	}
+	const sv_base = gc_parse_sv(opt, args[0]);
 }
 
 /*******************************
@@ -811,6 +883,7 @@ function main(args)
 	var cmd = args.shift();
 	if (cmd === "extract" || cmd === "getsv") gc_cmd_extract(args);
 	else if (cmd === "merge" || cmd === "mergesv") gc_cmd_merge(args);
+	else if (cmd === "eval") gc_cmd_eval(args);
 	else throw Error("unrecognized command: " + cmd);
 }
 

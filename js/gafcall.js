@@ -745,6 +745,7 @@ function gc_cmd_merge(args) {
  **************/
 
 function gc_parse_sv(opt, fn) {
+	const min_len = opt.min_len * opt.read_len_ratio;
 	let sv = [];
 	for (const line of k8_readline(fn)) {
 		if (line[0] === "#") continue;
@@ -776,7 +777,7 @@ function gc_parse_sv(opt, fn) {
 				let alt = t[4].split(",");
 				for (let i = 0; i < alt.length; ++i) {
 					const a = alt[i], len = a.length - rlen;
-					if (Math.abs(len) < opt.min_len_read) continue;
+					if (Math.abs(len) < min_len) continue;
 					if (len < 0)
 						sv.push({ ctg:s.ctg, pos:s.pos, ctg2:s.ctg, pos2:en, svtype:"DEL", svlen:len, ori:">>" });
 					else
@@ -794,6 +795,11 @@ function gc_parse_sv(opt, fn) {
 				else if ((m = /^\]([^s:]+):(\d+)\][A-Z]$/.exec(t[4])) != null) s.ctg2 = m[1], s.pos2 = parseInt(m[2]), s.ori = "<<";
 				else if ((m = /^\[([^s:]+):(\d+)\[[A-Z]$/.exec(t[4])) != null) s.ctg2 = m[1], s.pos2 = parseInt(m[2]), s.ori = "><";
 				else if ((m = /^[A-Z]\]([^s:]+):(\d+)\]$/.exec(t[4])) != null) s.ctg2 = m[1], s.pos2 = parseInt(m[2]), s.ori = "<>";
+				if (svtype != "BND" && s.ctg != s.ctg2) throw Error("different contigs for non-BND type");
+				if (s.ctg === s.ctg2 && s.pos > s.pos2) {
+					let tmp = s.pos;
+					s.pos = s.pos2, s.pos2 = tmp;
+				}
 				sv.push(s);
 			}
 		}
@@ -837,7 +843,7 @@ function gc_cmp_sv(opt, base, test, label) {
 		if (t.ctg2 == b.ctg  && t.pos2 >= b.pos - opt.win_size  && t.pos2 <= b.pos + opt.win_size)  match2 |= 1;
 		if (t.ctg2 == b.ctg2 && t.pos2 >= b.pos2 - opt.win_size && t.pos2 <= b.pos2 + opt.win_size) match2 |= 2;
 		if (b.svtype === "DUP" && t.svtype === "INS") {
-			return ((match1&1) != 0 && (match2&1) != 0);
+			return ((match1&1) != 0);
 		} else if (b.svtype === "INS" && t.svtype === "DUP") {
 			return ((match1&1) != 0);
 		} else if (b.svtype === "BND") {
@@ -859,10 +865,11 @@ function gc_cmp_sv(opt, base, test, label) {
 		return n;
 	}
 
-	let error = 0;
+	let tot = 0, error = 0;
 	for (let j = 0; j < test.length; ++j) {
 		const t = test[j];
-		if (t.svtype != "BND" && t.svlen > -opt.min_eval_len && t.svlen < opt.min_eval_len) continue; // not long enough
+		if (t.svtype != "BND" && t.svlen > -opt.min_len && t.svlen < opt.min_len) continue; // not long enough
+		++tot;
 		const n = eval1(opt, h, t.ctg, t.pos, t) + eval1(opt, h, t.ctg2, t.pos2, t);
 		if (n == 0) {
 			++error;
@@ -870,31 +877,33 @@ function gc_cmp_sv(opt, base, test, label) {
 				print(label, t.ctg, t.pos, t.ori, t.ctg2, t.pos2, t.svtype, t.svlen);
 		}
 	}
-	return error;
+	return [tot, error];
 }
 
 function gc_cmd_eval(args) {
-	let opt = { min_len_read:30, min_eval_len:50, win_size:500, min_len_ratio:0.6, dbg:false, print_err:false };
-	for (const o of getopt(args, "dr:w:e")) {
+	let opt = { min_len:100, read_len_ratio:0.8, win_size:500, min_len_ratio:0.6, dbg:false, print_err:false };
+	for (const o of getopt(args, "dr:l:w:e")) {
 		if (o.opt === "-d") opt.dbg = true;
-		else if (o.opt === "-r") opt.min_len_read = parseInt(o.arg);
+		else if (o.opt === "-l") opt.min_len = parseInt(o.arg);
+		else if (o.opt === "-r") opt.min_read_ratio = parseFloat(o.arg);
 		else if (o.opt === "-w") opt.win_size = parseInt(o.arg);
 		else if (o.opt === "-e") opt.print_err = true;
 	}
 	if (args.length < 2) {
 		print("Usgae: gafcall.js eval [options] <base.vcf> <test.vcf>");
 		print("Options:");
+		print(`  -l INT      min SVLEN [${opt.min_len}]`);
 		print(`  -w INT      fuzzy window size [${opt.win_size}]`);
-		print(`  -r INT      min SVLEN to read [${opt.min_len_read}]`);
+		print(`  -r FLOAT    read SVs longer than {-l}*FLOAT [${opt.read_len_ratio}]`);
 		print(`  -e          print errors`);
 		return;
 	}
 	const base = gc_parse_sv(opt, args[0]);
 	const test = gc_parse_sv(opt, args[1]);
-	const fn = gc_cmp_sv(opt, test, base, "FN");
-	const fp = gc_cmp_sv(opt, base, test, "FP");
-	print("RN", base.length, fn, (fn / base.length).toFixed(4));
-	print("RP", test.length, fp, (fp / test.length).toFixed(4));
+	const [tot_fn, fn] = gc_cmp_sv(opt, test, base, "FN");
+	const [tot_fp, fp] = gc_cmp_sv(opt, base, test, "FP");
+	print("RN", tot_fn, fn, (fn / tot_fn).toFixed(4));
+	print("RP", tot_fp, fp, (fp / tot_fp).toFixed(4));
 }
 
 /*******************************
@@ -952,6 +961,7 @@ function main(args)
 		print("Commands:");
 		print("  extract      extract long INDELs and breakpoints from GAF");
 		print("  merge        merge extracted INDELs and breakpoints");
+		print("  eval         evaluate SV calls");
 		exit(1);
 	}
 

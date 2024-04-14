@@ -561,7 +561,7 @@ function gc_cmd_extract(args) {
  *************************/
 
 function gc_cmd_merge(args) {
-	let opt = { min_cnt:3, min_cnt_strand:2, min_cnt_rt:1, min_rt_len:10, win_size:100, max_diff:0.05, min_cen_dist:500000, max_allele:100, max_check:500 };
+	let opt = { min_cnt:4, min_cnt_strand:2, min_cnt_rt:1, min_rt_len:0, win_size:100, max_diff:0.05, min_cen_dist:500000, max_allele:100, max_check:500 };
 	for (const o of getopt(args, "w:d:c:e:r:R:s:A:C:")) {
 		if (o.opt === "-w") opt.win_size = parseInt(o.arg);
 		else if (o.opt === "-d") opt.max_diff = parseFloat(o.arg);
@@ -581,7 +581,7 @@ function gc_cmd_merge(args) {
 		print(`  -w INT     window size [${opt.win_size}]`);
 		print(`  -d FLOAT   max allele length difference ratio [${opt.max_diff}]`);
 		print(`  -e INT     min distance to centromeres [${opt.min_cen_dist}]`);
-		print(`  -r INT     min min(TSD_len,polyA_len) to tag a candidate RT [${opt.min_rt_len}]`);
+		print(`  -r INT     min min(TSD,polyA) to tag a candidate RT; 0 to disable [${opt.min_rt_len}]`);
 		print(`  -R INT     min read count for a candidate RT [${opt.min_cnt_rt}]`);
 		print(`  -A INT     check up to INT nearby alleles [${opt.max_allele}]`);
 		print(`  -C INT     compare up to INT reads per allele [${opt.max_check}]`);
@@ -674,7 +674,7 @@ function gc_cmd_merge(args) {
 		}
 		mapq = (mapq / s.length).toFixed(0);
 		// filter by count
-		if (rt_len >= opt.min_rt_len) {
+		if (opt.min_rt_len > 0 && rt_len >= opt.min_rt_len) {
 			if (s.length < opt.min_cnt_rt) return;
 		} else {
 			if (s.length < opt.min_cnt) return;

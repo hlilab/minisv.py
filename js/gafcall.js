@@ -1,6 +1,6 @@
 #!/usr/bin/env k8
 
-const version = "r77";
+const gc_version = "r91";
 
 /**************
  * From k8.js *
@@ -987,6 +987,7 @@ function main(args)
 		print("  extract      extract long INDELs and breakpoints from GAF");
 		print("  merge        merge extracted INDELs and breakpoints");
 		print("  eval         evaluate SV calls");
+		print("  version      print version number");
 		exit(1);
 	}
 
@@ -994,7 +995,10 @@ function main(args)
 	if (cmd === "extract" || cmd === "getsv") gc_cmd_extract(args);
 	else if (cmd === "merge" || cmd === "mergesv") gc_cmd_merge(args);
 	else if (cmd === "eval") gc_cmd_eval(args);
-	else throw Error("unrecognized command: " + cmd);
+	else if (cmd === "version") {
+		print(gc_version);
+		return;
+	} else throw Error("unrecognized command: " + cmd);
 }
 
 main(arguments);

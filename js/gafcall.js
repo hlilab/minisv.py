@@ -837,12 +837,12 @@ function gc_cmp_sv(opt, base, test, label) {
 	function same_sv1(opt, b, t) { // compare two SVs
 		// check type
 		if (b.svtype != t.svtype) { // type mismatch
-			if (!(b.svtype === "DUP" && t.svtype === "INS") && !(b.svtype === "INS" && t.svtype === "DUP")) // special case for INS vs DUP
+			if (!(b.svtype === "DUP" && t.svtype === "INS") && !(b.svtype === "INS" && t.svtype === "DUP") && b.svtype !== "BND" && t.svtype !== "BND") // special case for INS vs DUP
 				return false;
 		}
 		// check length
 		const len_check = (Math.abs(b.svlen) >= Math.abs(t.svlen) * opt.min_len_ratio && Math.abs(t.svlen) >= Math.abs(b.svlen) * opt.min_len_ratio);
-		if (b.svtype != "BND" && !len_check) return false;
+		if (b.svtype !== "BND" && t.svtype !== "BND" && !len_check) return false;
 		// check the coordinates of end points
 		let match1 = 0, match2 = 0;
 		if (t.ctg == b.ctg   && t.pos >= b.pos - opt.win_size   && t.pos <= b.pos + opt.win_size)   match1 |= 1;
@@ -853,7 +853,7 @@ function gc_cmp_sv(opt, base, test, label) {
 			return ((match1&1) != 0);
 		} else if (b.svtype === "INS" && t.svtype === "DUP") {
 			return ((match1&1) != 0);
-		} else if (b.svtype === "BND") {
+		} else if (b.svtype === "BND" || t.svtype === "BND") {
 			return (((match1&1) != 0 && (match2&2) != 0) || ((match1&2) != 0 && (match2&1) != 0));
 		} else {
 			return ((match1&1) != 0 && (match2&2) != 0);

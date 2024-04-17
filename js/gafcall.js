@@ -141,6 +141,17 @@ function iit_overlap(a, st, en) {
 	return b;
 }
 
+function parseNum(s) {
+	var m, x = null;
+	if ((m = /^(\d*\.?\d*)([mMgGkK]?)/.exec(s)) != null) {
+		x = parseFloat(m[1]);
+		if (m[2] == 'k' || m[2] == 'K') x *= 1000;
+		else if (m[2] == 'm' || m[2] == 'M') x *= 1000000;
+		else if (m[2] == 'g' || m[2] == 'G') x *= 1000000000;
+	}
+	return Math.floor(x + .499);
+}
+
 /********************************
  * Extract SVs from GAF/PAF/SAM *
  ********************************/
@@ -567,7 +578,7 @@ function gc_cmd_merge(args) {
 		else if (o.opt === "-d") opt.max_diff = parseFloat(o.arg);
 		else if (o.opt === "-c") opt.min_cnt = parseInt(o.arg);
 		else if (o.opt === "-s") opt.min_cnt_strand = parseInt(o.arg);
-		else if (o.opt === "-e") opt.min_cen_dist = parseInt(o.arg);
+		else if (o.opt === "-e") opt.min_cen_dist = parseNum(o.arg);
 		else if (o.opt === "-r") opt.min_rt_len = parseInt(o.arg);
 		else if (o.opt === "-R") opt.min_cnt_rt = parseInt(o.arg);
 		else if (o.opt === "-A") opt.max_allele = parseInt(o.arg);
@@ -580,7 +591,7 @@ function gc_cmd_merge(args) {
 		print(`  -s INT     min read count on each strand [${opt.min_cnt_strand}]`);
 		print(`  -w INT     window size [${opt.win_size}]`);
 		print(`  -d FLOAT   max allele length difference ratio [${opt.max_diff}]`);
-		print(`  -e INT     min distance to centromeres [${opt.min_cen_dist}]`);
+		print(`  -e NUM     min distance to centromeres [${opt.min_cen_dist}]`);
 		print(`  -r INT     min min(TSD,polyA) to tag a candidate RT; 0 to disable [${opt.min_rt_len}]`);
 		print(`  -R INT     min read count for a candidate RT [${opt.min_cnt_rt}]`);
 		print(`  -A INT     check up to INT nearby alleles [${opt.max_allele}]`);
@@ -898,16 +909,16 @@ function gc_cmd_eval(args) {
 	let opt = { min_len:100, read_len_ratio:0.8, win_size:500, min_len_ratio:0.6, dbg:false, print_err:false };
 	for (const o of getopt(args, "dr:l:w:e")) {
 		if (o.opt === "-d") opt.dbg = true;
-		else if (o.opt === "-l") opt.min_len = parseInt(o.arg);
+		else if (o.opt === "-l") opt.min_len = parseNum(o.arg);
 		else if (o.opt === "-r") opt.min_read_ratio = parseFloat(o.arg);
-		else if (o.opt === "-w") opt.win_size = parseInt(o.arg);
+		else if (o.opt === "-w") opt.win_size = parseNum(o.arg);
 		else if (o.opt === "-e") opt.print_err = true;
 	}
 	if (args.length < 2) {
 		print("Usgae: gafcall.js eval [options] <base.vcf> <test.vcf>");
 		print("Options:");
-		print(`  -l INT      min SVLEN [${opt.min_len}]`);
-		print(`  -w INT      fuzzy window size [${opt.win_size}]`);
+		print(`  -l NUM      min SVLEN [${opt.min_len}]`);
+		print(`  -w NUM      fuzzy window size [${opt.win_size}]`);
 		print(`  -r FLOAT    read SVs longer than {-l}*FLOAT [${opt.read_len_ratio}]`);
 		print(`  -e          print errors`);
 		return;

@@ -1,6 +1,6 @@
 #!/usr/bin/env k8
 
-const gc_version = "r92";
+const gc_version = "r93";
 
 /**************
  * From k8.js *
@@ -791,7 +791,7 @@ function gc_parse_sv(opt, fn) {
 				let alt = t[4].split(",");
 				for (let i = 0; i < alt.length; ++i) {
 					const a = alt[i], len = a.length - rlen;
-					if (Math.abs(len) < min_len) continue;
+					if (Math.abs(len) < min_read_len) continue;
 					if (len < 0)
 						sv.push({ ctg:s.ctg, pos:s.pos, ctg2:s.ctg, pos2:en, svtype:"DEL", svlen:len, ori:">>" });
 					else

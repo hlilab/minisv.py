@@ -865,6 +865,15 @@ function gc_cmp_sv(opt, base, test, label) {
 		h[ctg] = iit_sort_copy(h[ctg]);
 		iit_index(h[ctg]);
 	}
+	const ctgs = [];
+	if (opt.dbg) {
+	    ctgs.push("1","10","5");
+	    for (o=0; o<ctgs.length; ++o) {
+	        for (zz=0; zz<h[ctgs[o]].length; ++zz)  {
+	        	print(h[ctgs[o]][zz].st, h[ctgs[o]][zz].en, h[ctgs[o]][zz].max);
+	        }
+	    }
+	}
 
 	function same_sv1(opt, b, t) { // compare two SVs
 		// check type
@@ -896,7 +905,11 @@ function gc_cmp_sv(opt, base, test, label) {
 		if (h[ctg] == null) return false;
 		const st = pos > opt.win_size? pos - opt.win_size : 0;
 		const en = pos + opt.win_size;
+		print(ctg, st, en, opt.win_size)
 		const a = iit_overlap(h[ctg], st, en);
+		//print(ctg, st, en)
+		//print('aa----')
+		//print(a.length)
 		let n = 0;
 		for (let i = 0; i < a.length; ++i)
 			if (same_sv1(opt, a[i].data, t))
@@ -925,7 +938,8 @@ function gc_cmd_eval(args) {
 	for (const o of getopt(args, "dr:l:w:e")) {
 		if (o.opt === "-d") opt.dbg = true;
 		else if (o.opt === "-l") opt.min_len = parseNum(o.arg);
-		else if (o.opt === "-r") opt.min_read_ratio = parseFloat(o.arg);
+		else if (o.opt === "-r") opt.read_len_ratio = parseFloat(o.arg);
+		else if (o.opt === "-m") opt.min_len_ratio = parseFloat(o.arg);
 		else if (o.opt === "-w") opt.win_size = parseNum(o.arg);
 		else if (o.opt === "-e") opt.print_err = true;
 	}

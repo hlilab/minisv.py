@@ -795,6 +795,7 @@ function gc_parse_sv(opt, fn) {
 				if ((m = /\bEND=(\d+)/.exec(info)) != null) {
 					s.pos2 = parseInt(m[1]);
 				} else if (rlen == 1) {
+					if (svtype === "BND" && t[4].length < 6) continue; // one-sided breakpoint
 					if (svtype === "DEL" || svtype === "DUP" || svtype === "INV")
 						s.pos2 = s.pos + Math.abs(svlen);
 				}

@@ -36,6 +36,16 @@ class mergeopt:
     min_cen_dist: int = 5e5
 
 
+@dataclass
+class EvalOpt:
+    min_len: int = 100
+    read_len_ratio: float = 0.8
+    win_size: int = 500
+    min_len_ratio: float = 0.6
+    dbg: bool = False
+    print_err: bool = False
+
+
 @click.group(help="Pangenome SV tool commands")
 def cli():
     pass
@@ -240,6 +250,36 @@ def merge(w: int, d: float, c: int, e: float, r: int, input):
 
     options = mergeopt(win_size=w, max_diff=d, min_cnt=c, min_cen_dist=e, min_rt_len=r)
     merge_sv(options, input)
+
+
+@cli.command()
+@click.option("-w", required=False, default=100, type=int, help="window size")
+@click.option("-svlen", required=False, default=100, type=int, help="sv minimum length")
+@click.option("-c", required=False, default=3, type=int, help="minimum sv counts")
+@click.option(
+    "-r",
+    required=False,
+    default=0.8,  # NOTE: in js this might be a bug
+    type=float,
+    help="min read ratio",
+)
+@click.option("-d", is_flag=True, help="verbose option for debug")
+@click.option("-e", is_flag=True, help="verbose option for debug")
+@click.argument("base", type=click.Path(exists=True))
+@click.argument("compare", type=click.Path(exists=True))
+def eval(w: int, svlen: float, c: int, r: float, d: bool, e: bool, base, compare):
+    """Evaluation of SV calls"""
+    from .eval import eval
+
+    options = EvalOpt(
+        min_len=svlen,
+        win_size=w,
+        read_len_ratio=r,
+        min_len_ratio=0.6,  # NOTE: the option are not input
+        dbg=d,
+        print_err=e,
+    )
+    eval(base, compare, options)
 
 
 @cli.command()

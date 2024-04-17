@@ -935,7 +935,7 @@ function gc_cmp_sv(opt, base, test, label) {
 
 function gc_cmd_eval(args) {
 	let opt = { min_len:100, read_len_ratio:0.8, win_size:500, min_len_ratio:0.6, dbg:false, print_err:false };
-	for (const o of getopt(args, "dr:l:w:e")) {
+	for (const o of getopt(args, "dr:l:w:e:m:")) {
 		if (o.opt === "-d") opt.dbg = true;
 		else if (o.opt === "-l") opt.min_len = parseNum(o.arg);
 		else if (o.opt === "-r") opt.read_len_ratio = parseFloat(o.arg);

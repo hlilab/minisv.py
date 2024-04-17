@@ -792,8 +792,12 @@ function gc_parse_sv(opt, fn) {
 				if (svtype != "BND" && Math.abs(svlen) < opt.min_len_read) continue; // too short
 				if (svtype === "DEL" && svlen > 0) svlen = -svlen; // correct SVLEN as some VCF encodes this differently
 				s.svlen = svlen;
-				if ((m = /\bEND=(\d+)/.exec(info)) != null)
+				if ((m = /\bEND=(\d+)/.exec(info)) != null) {
 					s.pos2 = parseInt(m[1]);
+				} else if (rlen == 1) {
+					if (svtype === "DEL" || svtype === "DUP" || svtype === "INV")
+						s.pos2 = s.pos + Math.abs(svlen);
+				}
 				if ((m = /^[A-Z]\[([^s:]+):(\d+)\[$/.exec(t[4])) != null) s.ctg2 = m[1], s.pos2 = parseInt(m[2]), s.ori = ">>";
 				else if ((m = /^\]([^s:]+):(\d+)\][A-Z]$/.exec(t[4])) != null) s.ctg2 = m[1], s.pos2 = parseInt(m[2]), s.ori = "<<";
 				else if ((m = /^\[([^s:]+):(\d+)\[[A-Z]$/.exec(t[4])) != null) s.ctg2 = m[1], s.pos2 = parseInt(m[2]), s.ori = "><";

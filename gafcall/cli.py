@@ -253,7 +253,7 @@ def merge(w: int, d: float, c: int, e: float, r: int, input):
 
 
 @cli.command()
-@click.option("-w", required=False, default=100, type=int, help="window size")
+@click.option("-w", required=False, default=500, type=int, help="window size")
 @click.option("-svlen", required=False, default=100, type=int, help="sv minimum length")
 @click.option("-c", required=False, default=3, type=int, help="minimum sv counts")
 @click.option(
@@ -279,7 +279,6 @@ def eval(w: int, svlen: float, c: int, r: float, d: bool, e: bool, base, compare
         dbg=d,
         print_err=e,
     )
-    print(options)
     eval(base, compare, options)
 
 

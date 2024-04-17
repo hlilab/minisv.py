@@ -17,14 +17,15 @@ def eval(base, test, opt):
     """
     base = gc_parse_sv(opt, base)
     test = gc_parse_sv(opt, test)
+
     tot_fn, fn = gc_cmp_sv(opt, test, base, "FN")
     tot_fp, fp = gc_cmp_sv(opt, base, test, "FP")
-    print("RN", tot_fn, fn, (fn / tot_fn))
-    print("RP", tot_fp, fp, (fp / tot_fp))
+    print("RN", tot_fn, fn, round(fn / tot_fn, 4), sep="\t")
+    print("RP", tot_fp, fp, round(fp / tot_fp, 4), sep="\t")
 
 
 def gc_parse_sv(opt, file_path):
-    min_len = math.floor(opt.min_len * opt.read_len_ratio + 0.499)
+    min_read_len = math.floor(opt.min_len * opt.read_len_ratio + 0.499)
     sv = []
     ignore_id = {}
     with open(file_path) as f:
@@ -116,7 +117,7 @@ def gc_parse_sv(opt, file_path):
                         # alt allele - reference allele
                         length = len(a) - rlen
 
-                        if abs(length) < min_len:
+                        if abs(length) < min_read_len:
                             continue
 
                         if length < 0:
@@ -163,7 +164,7 @@ def gc_parse_sv(opt, file_path):
                     s.SVTYPE = svtype
 
                     # NOTE: js might have a bug here
-                    if svtype != "BND" and abs(svlen) < min_len:
+                    if svtype != "BND" and abs(svlen) < min_read_len:
                         continue  # too short
 
                     # ENCODE Deletion SVLEN consistently
@@ -172,13 +173,11 @@ def gc_parse_sv(opt, file_path):
 
                     s.SVLEN = svlen
 
-                    m = re.findall(r"\bEND=([0-9]+)", info)
+                    m = re.findall(r"\bEND=(\d+)", info)
                     if len(m) > 0:
                         s.pos2 = int(m[0])  # NOTE: - 1
                     elif rlen == 1:
                         # ignore one-sided breakpoint
-                        if opt.dbg:
-                            print(t[4])
                         # NOTE: how this ignore one-sided breakpoint?
                         #       why < 6
                         if svtype == "BND" and len(t[4]) < 6:
@@ -218,7 +217,15 @@ def gc_parse_sv(opt, file_path):
                         s.ori = "<>"
 
                     if svtype != "BND" and s.ctg != s.ctg2:
+                        # not possible for indel, dup and inversion
                         raise Exception("different contigs for non-BND type")
+
+                    if (
+                        svtype == "BND"
+                        and s.ctg == s.ctg2
+                        and abs(s.svlen) < min_read_len
+                    ):
+                        continue
 
                     if s.ctg == s.ctg2 and s.pos > s.pos2:
                         tmp = s.pos
@@ -226,7 +233,6 @@ def gc_parse_sv(opt, file_path):
                         s.pos2 = tmp
                     sv.append(s)
     if opt.dbg:
-        print(f"parsed {len(sv)} SVs")
         for i in range(len(sv)):
             s = sv[i]
             print(s.ctg, s.pos, s.ori, s.ctg2, s.pos2, s.SVTYPE, s.SVLEN, sep="\t")
@@ -256,13 +262,20 @@ def gc_cmp_sv(opt, base, test, label):
     for ctg in h:
         h[ctg] = iit_sort_copy(h[ctg])
         iit_index(h[ctg])
+    if opt.dbg:
+        for ctg in ["1", "10", "5"]:
+            for zz in h[ctg]:
+                print(zz.st, zz.en, zz.max, sep="\t")
 
     tot = error = 0
     for j in range(len(test)):
         t = test[j]
 
-        # Not long enough
-        if t.SVTYPE == "BND" and abs(t.SVLNE) < opt.min_len:
+        # Not long enough for non-BND type
+        if t.SVTYPE != "BND" and abs(t.SVLEN) < opt.min_len:
+            continue
+
+        if t.SVTYPE == "BND" and t.ctg == t.ctg2 and abs(t.SVLEN) < opt.min_len:
             continue
 
         tot += 1
@@ -270,7 +283,17 @@ def gc_cmp_sv(opt, base, test, label):
         if n == 0:
             error += 1
             if opt.print_err:
-                print(label, t.ctg, t.pos, t.ori, t.ctg2, t.pos2, t.SVTYPE, t.SVLEN)
+                print(
+                    label,
+                    t.ctg,
+                    t.pos,
+                    t.ori,
+                    t.ctg2,
+                    t.pos2,
+                    t.SVTYPE,
+                    t.SVLEN,
+                    sep="\t",
+                )
 
     return [tot, error]
 
@@ -314,13 +337,14 @@ def iit_index(a):
         step = 1 << (k + 1)
         x = 1 << (k - 1)
         for i in range(i0, len(a), step):
+            # NOTE: why exchange position
             a[i].max = a[i].en
             if a[i].max < a[i - x].max:
                 a[i].max = a[i - x].max
             e = a[i + x].max if i + x < len(a) else last
             if a[i].max < e:
                 a[i].max = e
-        last_i = last_i - x if (last_i >> k) & 1 else last_i + x
+        last_i = last_i - x if (last_i >> k) & 1 > 0 else last_i + x
         if last_i < len(a):
             last = last if last > a[last_i].max else a[last_i].max
         k += 1
@@ -333,6 +357,8 @@ def eval1(opt, h, ctg, pos, t):
 
     st = pos - opt.win_size if pos > opt.win_size else 0
     en = pos + opt.win_size
+    if opt.dbg:
+        print(ctg, st, en, opt.win_size, sep="\t")
     a = iit_overlap(h[ctg], st, en)
     n = 0
     for i in range(len(a)):
@@ -347,7 +373,6 @@ def iit_overlap(a, st, en):
     stack = []
     b = []
 
-    h = 0
     while 1 << h <= len(a):
         h += 1
 
@@ -388,8 +413,9 @@ def iit_overlap(a, st, en):
 def same_sv1(opt, b, t):
     # check type
     if b.SVTYPE != t.SVTYPE:
-        if (not (b.SVTYPE == "DUP" and t.SVTYPE == "INS")) and (
-            not (b.SVTYPE == "INS" and t.SVTYPE == "DUP")
+        if (
+            (not (b.SVTYPE == "DUP" and t.SVTYPE == "INS"))
+            and (not (b.SVTYPE == "INS" and t.SVTYPE == "DUP"))
             and b.SVTYPE != "BND"
             and t.SVTYPE != "BND"
         ):  # special case for INS vs DUP
@@ -402,7 +428,7 @@ def same_sv1(opt, b, t):
         and abs(t.SVLEN) >= abs(b.SVLEN) * opt.min_len_ratio
     )
 
-    if b.SVTYPE != "BND" and t.SVTYPE != "BND" and not len_check:
+    if b.SVTYPE != "BND" and t.SVTYPE != "BND" and (not len_check):
         return False
 
     match1 = match2 = 0

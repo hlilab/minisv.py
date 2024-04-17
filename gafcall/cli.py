@@ -257,9 +257,16 @@ def merge(w: int, d: float, c: int, e: float, r: int, input):
 @click.option("-svlen", required=False, default=100, type=int, help="sv minimum length")
 @click.option("-c", required=False, default=3, type=int, help="minimum sv counts")
 @click.option(
+    "-lenratio",
+    required=False,
+    default=0.6,
+    type=float,
+    help="length ratio similarity between read SV and truthset SV",
+)
+@click.option(
     "-r",
     required=False,
-    default=0.8,  # NOTE: in js this might be a bug
+    default=0.8,  # NOTE: in js this might be a bug, these ratio name looks confusing
     type=float,
     help="min read ratio",
 )
@@ -267,7 +274,17 @@ def merge(w: int, d: float, c: int, e: float, r: int, input):
 @click.option("-e", is_flag=True, help="verbose option for debug")
 @click.argument("base", type=click.Path(exists=True))
 @click.argument("compare", type=click.Path(exists=True))
-def eval(w: int, svlen: float, c: int, r: float, d: bool, e: bool, base, compare):
+def eval(
+    w: int,
+    svlen: float,
+    c: int,
+    r: float,
+    lenratio: float,
+    d: bool,
+    e: bool,
+    base,
+    compare,
+):
     """Evaluation of SV calls"""
     from .eval import eval
 
@@ -275,7 +292,7 @@ def eval(w: int, svlen: float, c: int, r: float, d: bool, e: bool, base, compare
         min_len=svlen,
         win_size=w,
         read_len_ratio=r,
-        min_len_ratio=0.6,  # NOTE: the option are not input
+        min_len_ratio=lenratio,  # NOTE: the option are not input
         dbg=d,
         print_err=e,
     )

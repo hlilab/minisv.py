@@ -279,6 +279,7 @@ def eval(w: int, svlen: float, c: int, r: float, d: bool, e: bool, base, compare
         dbg=d,
         print_err=e,
     )
+    print(options)
     eval(base, compare, options)
 
 

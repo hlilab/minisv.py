@@ -1,4 +1,7 @@
+import math
 import re
+from dataclasses import dataclass
+from typing import Optional
 
 from .merge import svinfo
 
@@ -12,25 +15,18 @@ def eval(base, test, opt):
     Returns:
         None
     """
-    print(opt.min_len)
-    print(opt.read_len_ratio)
-    print(opt.win_size)
-    print(opt.min_len_ratio)
-    print(opt.dbg)
-    print(opt.print_err)
-
     base = gc_parse_sv(opt, base)
     test = gc_parse_sv(opt, test)
-    tot_fn, fn = gc_cmp_sv(opt, base, test, "FN")
+    tot_fn, fn = gc_cmp_sv(opt, test, base, "FN")
     tot_fp, fp = gc_cmp_sv(opt, base, test, "FP")
-    print(tot_fn, tot_fp)
     print("RN", tot_fn, fn, (fn / tot_fn))
     print("RP", tot_fp, fp, (fp / tot_fp))
 
 
 def gc_parse_sv(opt, file_path):
-    # min_len = opt.min_len * opt.read_len_ratio
+    min_len = math.floor(opt.min_len * opt.read_len_ratio + 0.499)
     sv = []
+    ignore_id = {}
     with open(file_path) as f:
         for line in f:
             if line[0] == "#":
@@ -45,21 +41,20 @@ def gc_parse_sv(opt, file_path):
             type = 0
             info = None
 
-            if re.match(r"^[><][><]", t[2]) is not None:
+            if re.match(r"^[><][><]$", t[2]):
                 # breakpoint type
                 type = 3
                 info = t[8]
-            elif re.match(r";", t[7]) is not None:
+            elif re.search(r";", t[7]):
                 # VCF
                 type = 1
                 info = t[7]
-            elif (
-                re.match(r"^[0-9]+$", t[2]) is not None
-                and re.match(r";", t[6]) is not None
-            ):
+            elif re.match(r"^\d+$", t[2]) and re.search(r";", t[6]):
                 # NOTE: BED for CIGAR INDEL?
                 type = 2
                 info = t[6]
+            # else:
+            #    raise Exception('type == 0')
 
             if type == 0:
                 continue
@@ -71,7 +66,7 @@ def gc_parse_sv(opt, file_path):
                 svtype = m[0]
             m = re.findall(r"SVLEN=([^\s;]+)", info)
             if len(m) > 0:
-                svlen = float(m[0])
+                svlen = int(m[0])
 
             # BED line
             if type == 2:
@@ -121,7 +116,7 @@ def gc_parse_sv(opt, file_path):
                         # alt allele - reference allele
                         length = len(a) - rlen
 
-                        if abs(length) < opt.min_len:
+                        if abs(length) < min_len:
                             continue
 
                         if length < 0:
@@ -143,7 +138,7 @@ def gc_parse_sv(opt, file_path):
                                 svinfo(
                                     ctg=s.ctg,
                                     pos=s.pos,
-                                    ctg2=s.ctg2,
+                                    ctg2=s.ctg,
                                     pos2=en,
                                     ori=">>",
                                     SVTYPE="INS",
@@ -151,15 +146,24 @@ def gc_parse_sv(opt, file_path):
                                 )
                             )
                 else:
+                    if t[2] != ".":
+                        # ignore previously visited ID
+                        if t[2] in ignore_id:
+                            continue
+                        ignore_id[t[2]] = 1
+
+                    m = re.findall(r"\bMATEID=(\d+)", info)
+                    if len(m) > 0:
+                        ignore_id[m[0]] = 1
+
                     if svtype is None:
                         # we don't infer SVTYPE from breakpoint for existing data
                         raise Exception("cannot determine SVTYPE")
 
                     s.SVTYPE = svtype
 
-                    # NOTE: no initialization of opt.min_len_read
-                    #       bug?
-                    if svtype != "BND" and abs(svlen) < opt.min_len_read:
+                    # NOTE: js might have a bug here
+                    if svtype != "BND" and abs(svlen) < min_len:
                         continue  # too short
 
                     # ENCODE Deletion SVLEN consistently
@@ -167,37 +171,46 @@ def gc_parse_sv(opt, file_path):
                         svlen = -svlen
 
                     s.SVLEN = svlen
-                    m = re.findall(r"END=([0-9]+)", info)
+
+                    m = re.findall(r"\bEND=([0-9]+)", info)
                     if len(m) > 0:
                         s.pos2 = int(m[0])  # NOTE: - 1
+                    elif rlen == 1:
+                        # ignore one-sided breakpoint
+                        if opt.dbg:
+                            print(t[4])
+                        # NOTE: how this ignore one-sided breakpoint?
+                        #       why < 6
+                        if svtype == "BND" and len(t[4]) < 6:
+                            continue
+                        # NOTE: correct breakpoint end position?
+                        if svtype == "DEL" or svtype == "DUP" or svtype == "INV":
+                            s.pos2 = s.pos + abs(svlen)
 
                     # match VCF alt allele
                     # NOTE: ^\s in js?
-                    m = re.findall(r"^[A-Z]\[([^s:]+):(\d+)\[$", t[4])
+                    m = re.findall(r"^[A-Z]+\[([^s:]+):(\d+)\[$", t[4])
+                    # NOTE: ^\s in js?
+                    m1 = re.findall(r"^\]([^s:]+):(\d+)\][A-Z]+$", t[4])
+                    # [p[t: reverse comp piece extending right of p is joined before t
+                    m2 = re.findall(r"^\[([^s:]+):(\d+)\[[A-Z]+$", t[4])
+                    # t]p]: reverse comp piece extending left of p is joined after t
+                    m3 = re.findall(r"^[A-Z]+\]([^s:]+):(\d+)\]$", t[4])
                     if len(m) > 0:
                         s.ctg2 = m[0]
                         s.pos2 = int(m[1])
                         s.ori = ">>"
-
-                    # NOTE: ^\s in js?
-                    m = re.findall(r"^\]([^s:]+):(\d+)\][A-Z]$", t[4])
-                    if len(m) > 0:
+                    elif len(m1) > 0:
                         s.ctg2 = m[0]
                         s.pos2 = int(m[1])
                         s.ori = "<<"
-
-                    # [p[t: reverse comp piece extending right of p is joined before t
-                    m = re.findall(r"^\[([^s:]+):(\d+)\[[A-Z]$", t[4])
-                    if len(m) > 0:
+                    elif len(m2) > 0:
                         s.ctg2 = m[0]
                         s.pos2 = int(m[1])
                         # NOTE: why the direction? should be symmetric
                         #       maybe <>
                         s.ori = "><"
-
-                    # t]p]: reverse comp piece extending left of p is joined after t
-                    m = re.findall(r"^[A-Z]\]([^s:]+):(\d+)\]$", t[4])
-                    if len(m) > 0:
+                    elif len(m3) > 0:
                         s.ctg2 = m[0]
                         s.pos2 = int(m[1])
                         # NOTE: why the direction?
@@ -216,7 +229,7 @@ def gc_parse_sv(opt, file_path):
         print(f"parsed {len(sv)} SVs")
         for i in range(len(sv)):
             s = sv[i]
-            print(s.ctg, s.pos, s.ori, s.ctg2, s.pos2, s.SVTYPE, s.SVLEN)
+            print(s.ctg, s.pos, s.ori, s.ctg2, s.pos2, s.SVTYPE, s.SVLEN, sep="\t")
 
     return sv
 
@@ -244,8 +257,7 @@ def gc_cmp_sv(opt, base, test, label):
         h[ctg] = iit_sort_copy(h[ctg])
         iit_index(h[ctg])
 
-    tot = 0
-    error = 0
+    tot = error = 0
     for j in range(len(test)):
         t = test[j]
 
@@ -263,15 +275,23 @@ def gc_cmp_sv(opt, base, test, label):
     return [tot, error]
 
 
+@dataclass
+class iit_obj:
+    st: int
+    en: int
+    max: int = 0
+    data: Optional[svinfo] = None
+
+
 # interval query
 def iit_sort_copy(a):
     """Sort a list of SVs by start position and return a copy
     NOTE: what is iit sort? is it insertion sort?
     """
-    a.sort(lambda x: x.st)
+    a.sort(key=lambda x: x["st"])
     b = []
     for i in range(len(a)):
-        b.append({"st": a[i].st, "en": a[i].en, max: 0, "data": a[i].data})
+        b.append(iit_obj(st=a[i]["st"], en=a[i]["en"], max=0, data=a[i]["data"]))
     return b
 
 
@@ -288,21 +308,22 @@ def iit_index(a):
         last_i = i
 
     # NOTE: what is this loop for?
-    for k in range(1, len(a)):
-        if 1 << k <= len(a):
-            i0 = (1 << k) - 1
-            step = 1 << (k + 1)
-            x = 1 << (k - 1)
-            for i in range(i0, len(a), step):
-                a[i].max = a[i].en
-                if a[i].max < a[i - x].max:
-                    a[i].max = a[i - x].max
-                    e = a[i + x].max if i + x < len(a) else last
-                if a[i].max < e:
-                    a[i].max = e
-            last_i = last_i - x if (last_i >> k) & 1 else last_i + x
-            if last_i < len(a):
-                last = last if last > a[last_i].max else a[last_i].max
+    k = 1
+    while 1 << k <= len(a):
+        i0 = (1 << k) - 1
+        step = 1 << (k + 1)
+        x = 1 << (k - 1)
+        for i in range(i0, len(a), step):
+            a[i].max = a[i].en
+            if a[i].max < a[i - x].max:
+                a[i].max = a[i - x].max
+            e = a[i + x].max if i + x < len(a) else last
+            if a[i].max < e:
+                a[i].max = e
+        last_i = last_i - x if (last_i >> k) & 1 else last_i + x
+        if last_i < len(a):
+            last = last if last > a[last_i].max else a[last_i].max
+        k += 1
     return k - 1
 
 
@@ -325,20 +346,23 @@ def iit_overlap(a, st, en):
     h = 0
     stack = []
     b = []
-    for h in range(len(a)):
-        if 1 << h > len(a):
-            break
+
+    h = 0
+    while 1 << h <= len(a):
+        h += 1
 
     h -= 1
     stack.append([(1 << h) - 1, h, 0])
 
     while len(stack) > 0:
         t = stack.pop()
+        # NOTE: what does x, h, w represent?
         x = t[0]
         h = t[1]
         w = t[2]
+        # NOTE: why this should be 3
         if h <= 3:
-            # NOTE: why is this operation?
+            # NOTE: why right shift then left shift bit
             i0 = x >> h << h
             i1 = i0 + (1 << (h + 1)) - 1
             if i1 >= len(a):
@@ -348,6 +372,7 @@ def iit_overlap(a, st, en):
                 if st < a[i].en:
                     b.append(a[i])
                 i += 1
+        # NOTE: why this should be 0
         elif w == 0:
             stack.append([x, h, 1])
             y = x - (1 << (h - 1))
@@ -357,7 +382,6 @@ def iit_overlap(a, st, en):
             if st < a[x].en:
                 b.append(a[x])
             stack.append([x + (1 << (h - 1)), h - 1, 0])
-
     return b
 
 
@@ -366,7 +390,9 @@ def same_sv1(opt, b, t):
     if b.SVTYPE != t.SVTYPE:
         if (not (b.SVTYPE == "DUP" and t.SVTYPE == "INS")) and (
             not (b.SVTYPE == "INS" and t.SVTYPE == "DUP")
-        ):
+            and b.SVTYPE != "BND"
+            and t.SVTYPE != "BND"
+        ):  # special case for INS vs DUP
             return False
 
     # check length
@@ -376,7 +402,7 @@ def same_sv1(opt, b, t):
         and abs(t.SVLEN) >= abs(b.SVLEN) * opt.min_len_ratio
     )
 
-    if b.SVTYPE != "BND" and not len_check:
+    if b.SVTYPE != "BND" and t.SVTYPE != "BND" and not len_check:
         return False
 
     match1 = match2 = 0
@@ -414,7 +440,7 @@ def same_sv1(opt, b, t):
         return (match1 & 1) != 0
     elif b.SVTYPE == "INS" and t.SVTYPE == "DUP":
         return (match1 & 1) != 0
-    elif b.SVTYPE == "BND":
+    elif b.SVTYPE == "BND" or t.SVTYPE == "BND":
         return ((match1 & 1) != 0 and (match2 & 2) != 0) or (
             (match1 & 2) != 0 and (match2 & 1) != 0
         )

@@ -601,12 +601,13 @@ function gc_cmd_merge(args) {
 
 	function parse_sv(t) {
 		const re_info = /([^;\s=]+)=([^;\s=]+)/g;
-		let v = { ctg:t[0], pos:parseInt(t[1]), st:-1, en:-1, ori:null, ctg2:null, pos2:null, _mapq:0, strand:null, is_bp:false, info:null }
+		let v = { ctg:t[0], pos:parseInt(t[1]), st:-1, en:-1, ori:null, ctg2:null, pos2:null, _mapq:0, strand:null, is_bp:false, name:null, info:null }
 		v.is_bp = /[><]/.test(t[2]);
 		const off = v.is_bp? 6 : 4; // offset of the mapq column
 		v._mapq = parseInt(t[off]);
 		v.strand = t[off+1];
 		v.info = t[off+2];
+		v.name = t[off-1];
 		let m;
 		while ((m = re_info.exec(t[off+2])) != null) // parse INFO
 			v[m[1]] = m[2];
@@ -665,12 +666,13 @@ function gc_cmd_merge(args) {
 		if (rt_len_arr.length > 0)
 			rt_len = rt_len_arr[rt_len_arr.length>>1];
 		// count
-		let mapq = 0, cnt = {}, cnt_strand = [0, 0];
+		let mapq = 0, cnt = {}, cnt_strand = [0, 0], name = [];
 		for (let i = 0; i < s.length; ++i) {
 			mapq += s[i]._mapq;
 			if (cnt[s[i].source] == null) cnt[s[i].source] = [0, 0];
 			cnt[s[i].source][s[i].strand === "+"? 0 : 1]++;
 			cnt_strand[s[i].strand === "+"? 0 : 1]++;
+			name.push(s[i].name);
 		}
 		mapq = (mapq / s.length).toFixed(0);
 		// filter by count
@@ -686,6 +688,7 @@ function gc_cmd_merge(args) {
 		info += `count=${cnt_arr.join("|")};`;
 		info += `rt_len=${rt_len};`;
 		info += v.info.replace(/(;?)source=[^;\s=]+/, "");
+		info += `;reads=${name.join(",")}`;
 
 		if (!v.is_bp) {
 			print(v.ctg, v.st, v.en, ".", s.length, v.strand, info);

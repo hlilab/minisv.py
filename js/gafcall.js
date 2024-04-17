@@ -749,7 +749,7 @@ function gc_cmd_merge(args) {
 
 function gc_parse_sv(opt, fn) {
 	const min_len = opt.min_len * opt.read_len_ratio;
-	let sv = [];
+	let sv = [], ignore_id = {};
 	for (const line of k8_readline(fn)) {
 		if (line[0] === "#") continue;
 		let m, t = line.split("\t");
@@ -787,6 +787,12 @@ function gc_parse_sv(opt, fn) {
 						sv.push({ ctg:s.ctg, pos:s.pos, ctg2:s.ctg, pos2:en, svtype:"INS", svlen:len, ori:">>" });
 				}
 			} else { // other SV encoding
+				if (t[2] !== ".") {
+					if (ignore_id[t[2]]) continue; // ignore previously visited ID
+					ignore_id[t[2]] = 1;
+				}
+				if ((m = /\bMATEID=(\d+)/.exec(info)) != null)
+					ignore_id[m[1]] = 1;
 				if (svtype == null) throw Error("can't determine SVTYPE"); // we don't infer SVTYPE from breakpoint
 				s.svtype = svtype;
 				if (svtype != "BND" && Math.abs(svlen) < opt.min_len_read) continue; // too short
@@ -795,7 +801,7 @@ function gc_parse_sv(opt, fn) {
 				if ((m = /\bEND=(\d+)/.exec(info)) != null) {
 					s.pos2 = parseInt(m[1]);
 				} else if (rlen == 1) {
-					if (svtype === "BND" && t[4].length < 6) continue; // one-sided breakpoint
+					if (svtype === "BND" && t[4].length < 6) continue; // ignore one-sided breakpoint
 					if (svtype === "DEL" || svtype === "DUP" || svtype === "INV")
 						s.pos2 = s.pos + Math.abs(svlen);
 				}

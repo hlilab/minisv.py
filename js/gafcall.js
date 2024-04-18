@@ -1,6 +1,6 @@
 #!/usr/bin/env k8
 
-const gc_version = "r101";
+const gc_version = "r102";
 
 /**************
  * From k8.js *
@@ -780,24 +780,26 @@ function gc_parse_sv(min_len, fn) {
 			t[2] = parseInt(t[2]);
 			if (t[1] > t[2]) throw("incorrected BED?");
 			if (Math.abs(svlen) < min_len) continue;
-			sv.push({ ctg:t[0], pos:t[1], ctg2:t[0], pos2:t[2], ori:">>", svtype:svtype, svlen:svlen });
+			sv.push({ ctg:t[0], pos:t[1], ctg2:t[0], pos2:t[2], ori:">>", svtype:svtype, svlen:svlen, vaf:1 });
 		} else if (type == 3) { // breakpoint line
 			t[4] = parseInt(t[4]);
 			if (t[0] === t[3] && Math.abs(svlen) < min_len) continue;
-			sv.push({ ctg:t[0], pos:t[1], ctg2:t[3], pos2:t[4], ori:t[2], svtype:svtype, svlen:svlen });
+			sv.push({ ctg:t[0], pos:t[1], ctg2:t[3], pos2:t[4], ori:t[2], svtype:svtype, svlen:svlen, vaf:1 });
 		} else if (type == 1) { // VCF line
 			if (t[6] !== "PASS" && t[6] !== ".") continue; // ignore filtered calls
 			let rlen = t[3].length, en = t[1] + rlen - 1;
-			let s = { ctg:t[0], pos:t[1]-1, ctg2:t[0], pos2:en, ori:">>" };
+			let s = { ctg:t[0], pos:t[1]-1, ctg2:t[0], pos2:en, ori:">>", vaf:1 };
+			if ((m = /\bVAF=([^\s;]+)/.exec(info)) != null)
+				s.vaf = parseFloat(m[1]);
 			if (/^[A-Z,]+$/.test(t[4])) { // assume full allele sequence; override SVTYPE/SVLEN even if present
 				let alt = t[4].split(",");
 				for (let i = 0; i < alt.length; ++i) {
 					const a = alt[i], len = a.length - rlen;
 					if (Math.abs(len) < min_len) continue;
 					if (len < 0)
-						sv.push({ ctg:s.ctg, pos:s.pos, ctg2:s.ctg, pos2:en, svtype:"DEL", svlen:len, ori:">>" });
+						sv.push({ ctg:s.ctg, pos:s.pos, ctg2:s.ctg, pos2:en, svtype:"DEL", svlen:len, ori:">>", vaf:s.vaf });
 					else
-						sv.push({ ctg:s.ctg, pos:s.pos, ctg2:s.ctg, pos2:en, svtype:"INS", svlen:len, ori:">>" });
+						sv.push({ ctg:s.ctg, pos:s.pos, ctg2:s.ctg, pos2:en, svtype:"INS", svlen:len, ori:">>", vaf:s.vaf });
 				}
 			} else { // other SV encoding
 				if (t[2] !== ".") {
@@ -912,6 +914,7 @@ function gc_cmp_sv(opt, base, test, label) {
 		const t = test[j];
 		if (t.svtype !== "BND" && Math.abs(t.svlen) < opt.min_len) continue; // not long enough for non-BND type; note that t.ctg === t.ctg2 MUST stand due to assertion in parsing
 		if (t.svtype === "BND" && t.ctg === t.ctg2 && Math.abs(t.svlen) < opt.min_len) continue; // not long enough; in principle, this can be merged to the line above
+		if (t.vaf != null && t.vaf < opt.min_vaf) continue;
 		++tot;
 		const n = eval1(opt, h, t.ctg, t.pos, t) + eval1(opt, h, t.ctg2, t.pos2, t);
 		if (n == 0) {
@@ -924,13 +927,14 @@ function gc_cmp_sv(opt, base, test, label) {
 }
 
 function gc_cmd_eval(args) {
-	let opt = { min_len:100, read_len_ratio:0.8, win_size:500, min_len_ratio:0.6, dbg:false, print_err:false };
-	for (const o of getopt(args, "dr:l:w:em:")) {
+	let opt = { min_len:100, read_len_ratio:0.8, win_size:500, min_len_ratio:0.6, min_vaf:0, dbg:false, print_err:false };
+	for (const o of getopt(args, "dr:l:w:em:v:")) {
 		if (o.opt === "-d") opt.dbg = true;
 		else if (o.opt === "-l") opt.min_len = parseNum(o.arg);
 		else if (o.opt === "-m") opt.min_len_ratio = parseFloat(o.arg);
 		else if (o.opt === "-r") opt.read_len_ratio = parseFloat(o.arg);
 		else if (o.opt === "-w") opt.win_size = parseNum(o.arg);
+		else if (o.opt === "-v") opt.min_vaf = parseFloat(o.arg);
 		else if (o.opt === "-e") opt.print_err = true;
 	}
 	if (args.length < 2) {
@@ -940,6 +944,7 @@ function gc_cmd_eval(args) {
 		print(`  -w NUM      fuzzy window size [${opt.win_size}]`);
 		print(`  -r FLOAT    read SVs longer than {-l}*FLOAT [${opt.read_len_ratio}]`);
 		print(`  -m FLOAT    two SVs regarded the same if length ratio above [${opt.min_len_ratio}]`);
+		print(`  -v FLOAT    ignore VAF below FLOAT (requiring VAF in VCF) [${opt.min_vaf}]`);
 		print(`  -e          print errors`);
 		return;
 	}

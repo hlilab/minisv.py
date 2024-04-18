@@ -46,7 +46,9 @@ class svobj:
     is_bp: bool = False
 
 
+# NOTE: do we merge this with the eval function
 def parse_sv(t):
+    # print(t)
     v = svinfo(
         ctg=t[0],
         pos=int(t[1]),
@@ -68,6 +70,7 @@ def parse_sv(t):
     v._mapq = int(t[off])
     v.strand = t[off + 1]
     v.info = t[off + 2]
+    v.name = t[off - 1]
 
     for m in re_info.findall(v.info):
         setattr(v, m[0], m[1])
@@ -97,15 +100,36 @@ def parse_sv(t):
     return v
 
 
+def splitmix32(a):
+    def generate_random():
+        nonlocal a
+        a |= 0
+        a = (a + 0x9E3779B9) & 0xFFFFFFFF
+        t = (a ^ (a >> 16)) & 0xFFFFFFFF
+        t = (t * 0x21F0AAAD) & 0xFFFFFFFF
+        t = (t ^ (t >> 15)) & 0xFFFFFFFF
+        t = (t * 0x735A2D97) & 0xFFFFFFFF
+        t = (t ^ (t >> 15)) & 0xFFFFFFFF
+        return t / 4294967296.0
+
+    return generate_random
+
+
 def merge_sv(opt, input):
     # read lines from stdin
     sv = []
+    rng = splitmix32(11)
     for line in input:
         t = line.strip().split("\t")
         v = parse_sv(t)
 
         while len(sv) > 0:
-            if sv[0].ctg != v.ctg or v.pos - sv[0].pos_max > opt.win_size:
+            # NOTE: so we don't merge SV with too many alleles
+            if (
+                sv[0].ctg != v.ctg
+                or v.pos - sv[0].pos_max > opt.win_size
+                or len(sv) > opt.max_allele
+            ):
                 out = sv.pop(0)
                 write_sv(opt, out.v)
             else:
@@ -114,10 +138,28 @@ def merge_sv(opt, input):
         cnt_same = []
         for i in range(len(sv)):
             c = 0
-            if sv[i].SVTYPE == v.SVTYPE:
-                for j in range(len(sv[i].v)):
-                    if same_sv(opt, sv[i].v[j], v):
-                        c += 1
+            if sv[i].SVTYPE == v.SVTYPE or (
+                sv[i].SVTYPE == "INS" and v.SVTYPE == "DUP"
+            ):
+                if len(sv[i].v) <= opt.max_check:
+                    for j in range(len(sv[i].v)):
+                        if same_sv(opt, sv[i].v[j], v):
+                            c += 1
+                else:
+                    # reservior sampling for a subset of reads to reduce time
+                    p = []
+                    for j in range(len(sv[i].v)):
+                        # NOTE: why not use a constant max_check here
+                        k = j if j < opt.max_check else math.floor(j * rng())
+
+                        if k < opt.max_check:
+                            p.append(j)
+
+                    for k in range(opt.max_check):
+                        if same_sv(opt, sv[i].v[p[k]], v):
+                            c += 1
+                    c = math.floor(c / opt.max_check * len(sv[i].v) + 0.499)
+
             cnt_same.append(c)
 
         max = 0
@@ -151,6 +193,7 @@ def merge_sv(opt, input):
     return None
 
 
+# NOTE: do we merge this with the eval function
 def same_sv(opt, v, w):
     # not the same (breakpoint or indel type)
     if v.is_bp != w.is_bp:
@@ -237,34 +280,42 @@ def write_sv(opt, s):
         # NOTE: not sure this index operation
         rt_len = rt_len_arr[len(rt_len_arr) >> 1]
 
-    # filter by the count
-    if rt_len >= opt.min_rt_len:
-        if len(s) < opt.min_cnt_rt:
-            return
-    else:
-        if len(s) < opt.min_cnt:
-            return
-
     # count
     mapq = 0
     cnt = {}
-    cnt_arr = []
+    cnt_strand = [0, 0]
+    name = []
     for i in range(len(s)):
         mapq += s[i]._mapq
         if s[i].source not in cnt:
             # NOTE: count the number of sample for each sv
             cnt[s[i].source] = [0, 0]
         cnt[s[i].source][0 if s[i].strand == "+" else 1] += 1
+        cnt_strand[0 if s[i].strand == "+" else 1] += 1
+        name.append(s[i].name)
 
     mapq = normal_round(mapq / len(s))
-    info = f"avg_mapq={mapq:.0f};"
 
+    # filter by the count
+    if opt.min_rt_len > 0 and rt_len >= opt.min_rt_len:
+        if len(s) < opt.min_cnt_rt:
+            return
+    else:
+        if len(s) < opt.min_cnt:
+            return
+        # NOTE: strand bias?
+        if cnt_strand[0] < opt.min_cnt_strand or cnt_strand[1] < opt.min_cnt_strand:
+            return
+
+    cnt_arr = []
     for src in cnt:
         cnt_arr.append(f"{src}:{cnt[src][0]},{cnt[src][1]}")
 
+    info = f"avg_mapq={mapq:.0f};"
     info += f"count={'|'.join(cnt_arr)};"
     info += f"rt_len={rt_len};"
     info += re.sub(r"(;?)source=[^;\s=]+", "", v.info)
+    info += f";reads={','.join(name)}"
 
     if not v.is_bp:
         print(v.ctg, v.st, v.en, ".", len(s), v.strand, info, sep="\t")

@@ -2,6 +2,7 @@ import re
 from dataclasses import dataclass
 
 from .annotation import cal_cen_dist
+from .graph_genome_coor import path2ctg
 from .regex import cigar_pattern, ds_pattern, path_seg_pattern, re_tsd
 
 
@@ -20,6 +21,16 @@ class indel_coord:
     enl: int = 0
     str: int = 0
     enr: int = 0
+
+
+@dataclass
+class path_segment:
+    ctg: str
+    ctg_st: int
+    ctg_en: int
+    strand: int
+    path_st: int
+    path_en: int
 
 
 # NOTE: why ignore n
@@ -88,9 +99,10 @@ def get_indel(opt, z):
                 if op == "I":
                     # [start, end, indel length, tsd length, polyA length, tsd seq, indel seq]
                     a.append(
+                        # NOTE: change from (x-1,x+1) to (x,x)?
                         indel_coord(
-                            st=x - 1,
-                            en=x + 1,
+                            st=x,
+                            en=x,
                             len=length,
                             indel_seq=".",
                             tsd_len=0,
@@ -116,7 +128,9 @@ def get_indel(opt, z):
                 x += length
 
         # No indel cigar or too many
-        if len(a) == 0 or len(a) > opt.max_cnt:
+        # per 10k alleles cannot be too many
+        # NOTE: considering ultralong and contig alignment
+        if len(a) == 0 or len(a) > y.qlen * 1e-4 * opt.max_cnt_10k:
             continue
 
         # NOTE: what is this for?
@@ -145,13 +159,16 @@ def get_indel(opt, z):
                 # extract INDEL sequence with check consistency with CIGAR
                 if length >= opt.min_len:
                     if op == "+":  # insertion
-                        if a[i].st != x - 1 or a[i].en != x + 1 or a[i].len != length:
+                        # NOTE: change from (x-1,x+1) to (x,x)?
+                        if a[i].st != x or a[i].en != x or a[i].len != length:
+                            # print(a[i].st, x, a[i].en, x + length, -length, a[i].len)
                             raise Exception(
                                 "CIGAR and ds insertion not consistent line number"
                             )
                         a[i].indel_seq = ds_str
                         i += 1
                     elif op == "-":  # deletion
+                        # print(a[i].st, x, a[i].en, x + length, -length, a[i].len)
                         if a[i].st != x or a[i].en != x + length or a[i].len != -length:
                             raise Exception("CIGAR and ds deletion not consistent")
                         a[i].indel_seq = ds_str
@@ -204,132 +221,129 @@ def get_indel(opt, z):
             for m in path_seg_pattern.findall(y.path):
                 st, en = int(m[2]), int(m[3])
                 # [path, absolute path start, absolute path end, path orientation, relative seg start, relative seg end]
-                seg.append([m[1], st, en, 1 if m[0] == ">" else -1, x, x + (en - st)])
+                strand = 1 if m[0] == ">" else -1
+                seg.append(
+                    path_segment(
+                        ctg=m[1],
+                        ctg_st=st,
+                        ctg_en=en,
+                        strand=strand,
+                        path_st=x,
+                        path_en=x + (en - st),
+                    )
+                )
                 # accumulate seg start
                 x += en - st
         else:
             # https://github.com/lh3/miniasm/blob/master/PAF.md
             # https://github.com/lh3/gfatools/blob/master/doc/rGFA.md
             # [path, 0, path length, 1, 0, path length]
-            seg.append([y.path, 0, y.tlen, 1, 0, y.tlen])
+            # NOTE: linear coordinate always strand == "+"?
+            seg.append(
+                path_segment(
+                    ctg=y.path,
+                    ctg_st=0,
+                    ctg_en=y.tlen,
+                    strand=1,
+                    path_st=0,
+                    path_en=y.tlen,
+                )
+            )
 
         # starts and ends points for the indels on the segments
         # also record start and end segments index
         # these are used to overlap between path segment and indels
-        sts, ens = [], []
+        # left
+        off_stl = []
+        # right
+        off_str = []
+        off_enl = []
+        off_enr = []
         for i in range(len(a)):
-            k = 0
-            # segment k relative end <= indel relative start
-            while k < len(seg) and seg[k][5] <= a[i].st:
-                k += 1
-            if k == len(seg):
-                raise Exception("failed to find start position")
-            # relative distance between indel start and segment start
-            start_l = a[i].st - seg[k][4]
-            # graph path > or linear genome
-            if seg[k][3] > 0:
-                # [seg index, absolute path start + distance to indel]
-                sts.append([k, seg[k][1] + start_l])
-            # graph path <, ask Heng
-            else:
-                # [seg index, absolute path end - distance to indel]
-                sts.append([k, seg[k][2] - start_l])
+            off_stl.append(a[i].stl)
+            off_str.append(a[i].str)
+            off_enl.append(a[i].enl)
+            off_enr.append(a[i].enr)
+
+        str = path2ctg(seg, off_str, False)
+        stl = path2ctg(seg, off_stl, False)
+        enr = path2ctg(seg, off_enr, True)
+        enl = path2ctg(seg, off_enl, True)
+
+        global_qname = y.qname
 
         for i in range(len(a)):
-            k = 0
-            # segment k relative end <= indel relative end
-            while k < len(seg) and seg[k][5] <= a[i].en:
-                k += 1
-            if k == len(seg):
-                raise Exception("failed to find end position")
-            # relative distance between indel end and segment start
-            end_l = a[i].en - seg[k][4]
-            # graph path > or linear genome
-            if seg[k][3] > 0:
-                # [seg index, absolute path start + distance to indel]
-                ens.append([k, seg[k][1] + end_l])
-            # graph path <, ask Heng
-            else:
-                ens.append([k, seg[k][2] - end_l])
+            if not (
+                stl[i].seg == str[i].seg
+                and stl[i].seg == enl[i].seg
+                and stl[i].seg == enr[i].seg
+            ):  # all on the same segment
+                continue
 
-        for i in range(len(a)):
-            if opt.dbg:
-                print("X2", a[i].st, a[i].en)
+            # find the corresponding segment
+            s = seg[stl[i].seg]
+            st = stl[i].pos
+            en = enl[i].pos
+            strand = y.strand
 
-            # NOTE: this is a new update that for reverse complement tsd, why?
-            #       reverse complement sequence if strand is reverse
-            if sts[i][0] == ens[i][0] and seg[sts[i][0]][3] < 0:
+            if s.strand < 0:
+                # NOTE: this is a new update that for reverse complement tsd, why?
+                #       reverse complement sequence if strand is reverse
                 a[i].polyA_len = -a[i].polyA_len
                 a[i].tsd_seq = mg_revcomp(a[i].tsd_seq)
                 a[i].int_seq = mg_revcomp(a[i].int_seq)
+                # NOTE: why reverse start and end as well?
+                st = enr[i].pos
+                en = str[i].pos
+                strand = "-" if strand == "+" else "+"
 
             info1 = ("SVTYPE=INS" if a[i].len > 0 else "SVTYPE=DEL") + (
                 f";SVLEN={a[i].len};tsd_len={a[i].tsd_len};polyA_len={a[i].polyA_len}"
             )
             info2 = f"source={opt.name};tsd_seq={a[i].tsd_seq if len(a[i].tsd_seq)>0 else '.'};insert={a[i].int_seq if len(a[i].int_seq)>0 else '.'}"
 
-            # indel on the same segment of the path
-            if sts[i][0] == ens[i][0]:
-                s = seg[sts[i][0]]
+            if s.ctg in opt.cen:
+                dist_st = cal_cen_dist(opt, s.ctg, st)
+                dist_en = cal_cen_dist(opt, s.ctg, en)
+                info1 += f";cen_dist={dist_st if dist_st < dist_en else dist_en}"
 
-                # seg starts with > or linear reference
-                if s[3] > 0:
-                    strand2 = y.strand
-                # seg starts with <
-                else:
-                    strand2 = "-" if y.strand == "+" else "+"
-
-                if s[0] in opt.cen:
-                    dist_st = cal_cen_dist(opt, s[0], sts[i][1])
-                    dist_en = cal_cen_dist(opt, s[0], ens[i][1])
-                    info1 += f";cen_dist={dist_st if dist_st < dist_en else dist_en}"
-
-                if sts[i][1] < ens[i][1]:
-                    start = sts[i][1]
-                else:
-                    start = ens[i][1]
-
-                if sts[i][1] > ens[i][1]:
-                    end = sts[i][1]
-                else:
-                    end = ens[i][1]
-                # [chrom, start, end, read_name, mapq, strand, indel length, tsd length, polyA length, indel seq]
-                print(
-                    s[0],
-                    start,
-                    end,
-                    y.qname,
-                    y.mapq,
-                    strand2,
-                    f"{info1};{info2}",
-                    sep="\t",
-                )
+            # [chrom, start, end, read_name, mapq, strand, indel length, tsd length, polyA length, indel seq]
+            print(
+                s.ctg,
+                st,
+                en,
+                global_qname,
+                y.mapq,
+                strand,
+                f"{info1};{info2}",
+                sep="\t",
+            )
             # indel on different segments
             # NOTE: shall we split the indel into multiple ones? No.
-            else:
-                path = []
-                length = 0
-                # iterate through segments
-                # j from indel start seg index to ends seg index
-                for j in range(sts[i][0], ens[i][0] + 1):
-                    s = seg[j]
-                    length += s[2] - s[1]
-                    orientation = ">" if s[3] > 0 else "<"
-                    # >chr1:1-2
-                    path.append(orientation + s[0] + f":{s[1]}-{s[2]}")
+            # else:
+            #     path = []
+            #     length = 0
+            #     # iterate through segments
+            #     # j from indel start seg index to ends seg index
+            #     for j in range(sts[i][0], ens[i][0] + 1):
+            #         s = seg[j]
+            #         length += s[2] - s[1]
+            #         orientation = ">" if s[3] > 0 else "<"
+            #         # >chr1:1-2
+            #         path.append(orientation + s[0] + f":{s[1]}-{s[2]}")
 
-                # relative seg start
-                off = seg[sts[i][0]][4]
-                # minigraph always use "+" in genome path
-                # convert back to relative path coordinate
-                # [chrom, start, end, read_name, mapq, strand, indel length, tsd length, polyA length, indel seq]
-                print(
-                    "".join(path),
-                    a[i].st - off,
-                    a[i].en - off,
-                    y.qname,
-                    y.mapq,
-                    "+",
-                    f"{info1};{info2}",
-                    sep="\t",
-                )
+            #     # relative seg start
+            #     off = seg[sts[i][0]][4]
+            #     # minigraph always use "+" in genome path
+            #     # convert back to relative path coordinate
+            #     # [chrom, start, end, read_name, mapq, strand, indel length, tsd length, polyA length, indel seq]
+            #     print(
+            #         "".join(path),
+            #         a[i].st - off,
+            #         a[i].en - off,
+            #         y.qname,
+            #         y.mapq,
+            #         "+",
+            #         f"{info1};{info2}",
+            #         sep="\t",
+            #     )

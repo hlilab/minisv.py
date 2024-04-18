@@ -65,10 +65,11 @@ def get_breakpoint(opt, z):
         # breakpoints are symmetric
         # chr1 400 >> chr1 500
         # chr1 500 << chr1 400 => chr1 400 >> chr1 500
-        # NOTE: why we still have <<?
         if not ((c0.ctg < c1.ctg) or (c0.ctg == c1.ctg and c0.pos < c1.pos)):
             c0 = y1.coor[0]
             c1 = y0.coor[1]
+            # NOTE: why we still have <<?
+            #       assign to negative strand
             strand2 = "-"
             ori = ("<" if c1.ori == ">" else ">") + ("<" if c0.ori == ">" else ">")
 
@@ -116,6 +117,7 @@ def infer_svtype(opt, c0, c1, ori, qgap):
     l1 = c1.pos - c0.pos + 1
 
     if l1 < 0:
+        # genome coordinate distance cannot be less than zero
         raise Exception("Error: l1 < 0")
 
     # qgap: l2, l = l1-l2
@@ -133,7 +135,6 @@ def infer_svtype(opt, c0, c1, ori, qgap):
     # long insertion without TSD
     # NOTE: why not "<<"
     if ori == ">>" and l1 < qgap and qgap - l1 >= opt.min_len:
-        # NOTE: why + 1
         return svtype(
             st=c0.pos,
             en=c1.pos + 1,

@@ -257,21 +257,3 @@ def write_vcf(opt, input):
             "1/1",
             sep="\t",
         )
-
-
-# if __name__ == "__main__":
-#    # test script locally
-#    parser = argparse.ArgumentParser(description="Identify Break Points from GAF input")
-#    parser.add_argument("-i", required=True, help="input GAF file")
-#    args = parser.parse_args()
-#    groups = load_gaf_to_grouped_reads(args.i)
-#    all_breaks = []
-#    for group in groups:
-#        if len(group) > 1:
-#            brks = call_breakpoints(group)
-#            for brk in brks:
-#                all_breaks.append(brk)
-#
-#    # bnd_bed, bnd_vcf = merge_breaks(lines, 100, 5)
-#    # sys.stdout.write('\n'.join(bnd_bed))
-#    # sys.stdout.write("\n".join(bnd_vcf))

@@ -19,7 +19,7 @@ class opt:
     min_len: int = 100
     min_aln_len_end: int = 2000
     min_aln_len_mid: int = 50
-    max_cnt: int = 5
+    max_cnt_10k: int = 5
     dbg: bool = False
     polyA_pen: int = 5
     polyA_drop: int = 100
@@ -29,11 +29,14 @@ class opt:
 @dataclass
 class mergeopt:
     min_cnt: int = 3
+    min_cnt_strand: int = 2
     min_cnt_rt: int = 1
     min_rt_len: int = 10
     win_size: int = 100
     max_diff: float = 0.05
     min_cen_dist: int = 5e5
+    max_allele: int = 100
+    max_check: int = 500
 
 
 @dataclass
@@ -158,7 +161,7 @@ def getsv(
 @click.option(
     "-f", required=False, default=0.7, type=float, help="min fraction of reads"
 )
-@click.option("-c", required=False, default=5, help="maximum count of sv in a read")
+@click.option("-c", required=False, default=3, help="maximum count of sv in a read")
 @click.option("-a", required=False, type=int, default=5, help="polyA penalty")
 @click.option(
     "-e",
@@ -201,7 +204,7 @@ def sv(
         min_len=svlen,
         dbg=d,
         min_frac=f,
-        max_cnt=c,
+        max_cnt_10k=c,
         polyA_pen=a,
         min_aln_len_end=e,
         min_aln_len_mid=m,
@@ -234,21 +237,45 @@ def sv(
 )
 @click.option("-c", required=False, default=3, type=int, help="minimum sv counts")
 @click.option(
+    "-s", required=False, default=3, type=int, help="minimum count per strand"
+)
+@click.option(
     "-r",
     required=False,
     default=10,
     type=int,
     help="min min(TSD_len,polyA_len) to tag a candidate RT",
 )
+@click.option("-rr", required=False, default=1, type=int, help="minimum count for RT")
+@click.option("-a", required=False, default=100, type=int, help="maximum allele number")
+@click.option(
+    "-cc",
+    required=False,
+    default=500,
+    type=int,
+    help="compare up to INT reads per allele",
+)
 @click.option(
     "-e", required=False, default=5e5, type=float, help="minimum distance to centromere"
 )  # NOTE: in mgutils, this is forced to be int
 @click.argument("input", type=click.File("r"), default=sys.stdin)
-def merge(w: int, d: float, c: int, e: float, r: int, input):
+def merge(
+    w: int, d: float, rr: int, c: int, cc: int, e: float, s: int, r: int, a: int, input
+):
     """Usage: sort -k 1,1 -k2,2n sv.bed | gafcall merge [options] -"""
     from .merge import merge_sv
 
-    options = mergeopt(win_size=w, max_diff=d, min_cnt=c, min_cen_dist=e, min_rt_len=r)
+    options = mergeopt(
+        win_size=w,
+        max_diff=d,
+        min_cnt=c,
+        min_cnt_rt=rr,
+        min_cen_dist=e,
+        min_rt_len=r,
+        min_cnt_strand=s,
+        max_allele=a,
+        max_check=cc,
+    )
     merge_sv(options, input)
 
 

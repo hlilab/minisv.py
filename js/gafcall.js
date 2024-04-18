@@ -1,6 +1,6 @@
 #!/usr/bin/env k8
 
-const gc_version = "r102";
+const gc_version = "r103";
 
 /**************
  * From k8.js *
@@ -914,7 +914,12 @@ function gc_cmp_sv(opt, base, test, label) {
 		const t = test[j];
 		if (t.svtype !== "BND" && Math.abs(t.svlen) < opt.min_len) continue; // not long enough for non-BND type; note that t.ctg === t.ctg2 MUST stand due to assertion in parsing
 		if (t.svtype === "BND" && t.ctg === t.ctg2 && Math.abs(t.svlen) < opt.min_len) continue; // not long enough; in principle, this can be merged to the line above
-		if (t.vaf != null && t.vaf < opt.min_vaf) continue;
+		if (t.vaf != null && t.vaf < opt.min_vaf) continue; // filter by VAF
+		if (opt.bed != null) {
+			if (opt.bed[t.ctg] == null || opt.bed[t.ctg2] == null) continue;
+			if (iit_overlap(opt.bed[t.ctg],  t.pos,  t.pos  + 1).length === 0) continue;
+			if (iit_overlap(opt.bed[t.ctg2], t.pos2, t.pos2 + 1).length === 0) continue;
+		}
 		++tot;
 		const n = eval1(opt, h, t.ctg, t.pos, t) + eval1(opt, h, t.ctg2, t.pos2, t);
 		if (n == 0) {
@@ -926,10 +931,26 @@ function gc_cmp_sv(opt, base, test, label) {
 	return [tot, error];
 }
 
+function gc_read_bed(fn) {
+	let h = {};
+	for (const line of k8_readline(fn)) {
+		let t = line.split("\t");
+		if (t.length < 3) continue;
+		if (h[t[0]] == null) h[t[0]] = [];
+		h[t[0]].push({ st:parseInt(t[1]), en:parseInt(t[2]), data:null });
+	}
+	for (const ctg in h) {
+		h[ctg] = iit_sort_copy(h[ctg]);
+		iit_index(h[ctg]);
+	}
+	return h;
+}
+
 function gc_cmd_eval(args) {
-	let opt = { min_len:100, read_len_ratio:0.8, win_size:500, min_len_ratio:0.6, min_vaf:0, dbg:false, print_err:false };
-	for (const o of getopt(args, "dr:l:w:em:v:")) {
+	let opt = { min_len:100, read_len_ratio:0.8, win_size:500, min_len_ratio:0.6, min_vaf:0, bed:null, dbg:false, print_err:false };
+	for (const o of getopt(args, "dr:l:w:em:v:b:")) {
 		if (o.opt === "-d") opt.dbg = true;
+		else if (o.opt === "-b") opt.bed = gc_read_bed(o.arg);
 		else if (o.opt === "-l") opt.min_len = parseNum(o.arg);
 		else if (o.opt === "-m") opt.min_len_ratio = parseFloat(o.arg);
 		else if (o.opt === "-r") opt.read_len_ratio = parseFloat(o.arg);
@@ -940,6 +961,7 @@ function gc_cmd_eval(args) {
 	if (args.length < 2) {
 		print("Usgae: gafcall.js eval [options] <base.vcf> <test.vcf>");
 		print("Options:");
+		print(`  -b FILE     confident regions in BED []`);
 		print(`  -l NUM      min SVLEN [${opt.min_len}]`);
 		print(`  -w NUM      fuzzy window size [${opt.win_size}]`);
 		print(`  -r FLOAT    read SVs longer than {-l}*FLOAT [${opt.read_len_ratio}]`);

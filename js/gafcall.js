@@ -817,10 +817,10 @@ function gc_parse_sv(min_read_len, fn) {
 					if (svtype === "DEL" || svtype === "DUP" || svtype === "INV")
 						s.pos2 = s.pos + Math.abs(svlen);
 				}
-				if ((m = /^[A-Z]+\[([^s:]+):(\d+)\[$/.exec(t[4])) != null) s.ctg2 = m[1], s.pos2 = parseInt(m[2]), s.ori = ">>";
-				else if ((m = /^\]([^s:]+):(\d+)\][A-Z]+$/.exec(t[4])) != null) s.ctg2 = m[1], s.pos2 = parseInt(m[2]), s.ori = "<<";
-				else if ((m = /^\[([^s:]+):(\d+)\[[A-Z]+$/.exec(t[4])) != null) s.ctg2 = m[1], s.pos2 = parseInt(m[2]), s.ori = "><";
-				else if ((m = /^[A-Z]+\]([^s:]+):(\d+)\]$/.exec(t[4])) != null) s.ctg2 = m[1], s.pos2 = parseInt(m[2]), s.ori = "<>";
+				if ((m = /^[A-Z]+\[([^\s:]+):(\d+)\[$/.exec(t[4])) != null) s.ctg2 = m[1], s.pos2 = parseInt(m[2]), s.ori = ">>";
+				else if ((m = /^\]([^\s:]+):(\d+)\][A-Z]+$/.exec(t[4])) != null) s.ctg2 = m[1], s.pos2 = parseInt(m[2]), s.ori = "<<";
+				else if ((m = /^\[([^\s:]+):(\d+)\[[A-Z]+$/.exec(t[4])) != null) s.ctg2 = m[1], s.pos2 = parseInt(m[2]), s.ori = "<>";
+				else if ((m = /^[A-Z]+\]([^\s:]+):(\d+)\]$/.exec(t[4])) != null) s.ctg2 = m[1], s.pos2 = parseInt(m[2]), s.ori = "><";
 				if (svtype !== "BND" && s.ctg !== s.ctg2) throw Error("different contigs for non-BND type");
 				if (svtype === "BND" && s.ctg === s.ctg2 && Math.abs(svlen) < min_read_len) continue;
 				if (s.ctg === s.ctg2 && s.pos > s.pos2) {

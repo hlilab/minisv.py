@@ -1,6 +1,6 @@
 #!/usr/bin/env k8
 
-const gc_version = "r93";
+const gc_version = "r94";
 
 /**************
  * From k8.js *
@@ -754,12 +754,11 @@ function gc_cmd_merge(args) {
 		write_sv(opt, sv.shift().v);
 }
 
-/**************
- * Evaluation *
- **************/
+/*************************
+ * Parse and reformat SV *
+ *************************/
 
-function gc_parse_sv(opt, fn) {
-	const min_read_len = Math.floor(opt.min_len * opt.read_len_ratio + .499);
+function gc_parse_sv(min_read_len, fn) {
 	let sv = [], ignore_id = {};
 	for (const line of k8_readline(fn)) {
 		if (line[0] === "#") continue;
@@ -830,14 +829,28 @@ function gc_parse_sv(opt, fn) {
 			}
 		}
 	}
-	if (opt.dbg) {
-		for (let i = 0; i < sv.length; ++i) {
-			const s = sv[i];
-			print(s.ctg, s.pos, s.ori, s.ctg2, s.pos2, s.svtype, s.svlen);
-		}
-	}
 	return sv;
 }
+
+function gc_cmd_format(args) {
+	let min_read_len = 100;
+	for (const o of getopt(args, "l:")) {
+		if (o.opt === "-l") min_read_len = parseNum(o.arg);
+	}
+	if (args.length == 0) {
+		print("Usage: gafcall.js format [-l NUM] <in.vcf>");
+		return;
+	}
+	const sv = gc_parse_sv(min_read_len, args[0]);
+	for (let i = 0; i < sv.length; ++i) {
+		const s = sv[i];
+		print(s.ctg, s.pos, s.ori, s.ctg2, s.pos2, s.svtype, s.svlen);
+	}
+}
+
+/**************
+ * Evaluation *
+ **************/
 
 function gc_cmp_sv(opt, base, test, label) {
 	let h = {};
@@ -925,8 +938,9 @@ function gc_cmd_eval(args) {
 		print(`  -e          print errors`);
 		return;
 	}
-	const base = gc_parse_sv(opt, args[0]);
-	const test = gc_parse_sv(opt, args[1]);
+	const min_read_len = Math.floor(opt.min_len * opt.read_len_ratio + .499);
+	const base = gc_parse_sv(min_read_len, args[0]);
+	const test = gc_parse_sv(min_read_len, args[1]);
 	const [tot_fn, fn] = gc_cmp_sv(opt, test, base, "FN");
 	const [tot_fp, fp] = gc_cmp_sv(opt, base, test, "FP");
 	print("RN", tot_fn, fn, (fn / tot_fn).toFixed(4));
@@ -989,6 +1003,7 @@ function main(args)
 		print("  extract      extract long INDELs and breakpoints from GAF");
 		print("  merge        merge extracted INDELs and breakpoints");
 		print("  eval         evaluate SV calls");
+		print("  format       print in the gafcall format");
 		print("  version      print version number");
 		exit(1);
 	}
@@ -997,6 +1012,7 @@ function main(args)
 	if (cmd === "extract" || cmd === "getsv") gc_cmd_extract(args);
 	else if (cmd === "merge" || cmd === "mergesv") gc_cmd_merge(args);
 	else if (cmd === "eval") gc_cmd_eval(args);
+	else if (cmd === "format") gc_cmd_format(args);
 	else if (cmd === "version") {
 		print(gc_version);
 		return;

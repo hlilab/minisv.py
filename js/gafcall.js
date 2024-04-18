@@ -1,6 +1,6 @@
 #!/usr/bin/env k8
 
-const gc_version = "r99";
+const gc_version = "r101";
 
 /**************
  * From k8.js *
@@ -758,7 +758,7 @@ function gc_cmd_merge(args) {
  * Parse and reformat SV *
  *************************/
 
-function gc_parse_sv(min_read_len, fn) {
+function gc_parse_sv(min_len, fn) {
 	let sv = [], ignore_id = {};
 	for (const line of k8_readline(fn)) {
 		if (line[0] === "#") continue;
@@ -779,20 +779,21 @@ function gc_parse_sv(min_read_len, fn) {
 		if (type == 2) { // BED line
 			t[2] = parseInt(t[2]);
 			if (t[1] > t[2]) throw("incorrected BED?");
-			if (Math.abs(svlen) < min_read_len) continue;
+			if (Math.abs(svlen) < min_len) continue;
 			sv.push({ ctg:t[0], pos:t[1], ctg2:t[0], pos2:t[2], ori:">>", svtype:svtype, svlen:svlen });
 		} else if (type == 3) { // breakpoint line
 			t[4] = parseInt(t[4]);
-			if (t[0] === t[3] && Math.abs(svlen) < min_read_len) continue;
+			if (t[0] === t[3] && Math.abs(svlen) < min_len) continue;
 			sv.push({ ctg:t[0], pos:t[1], ctg2:t[3], pos2:t[4], ori:t[2], svtype:svtype, svlen:svlen });
 		} else if (type == 1) { // VCF line
+			if (t[6] !== "PASS" && t[6] !== ".") continue; // ignore filtered calls
 			let rlen = t[3].length, en = t[1] + rlen - 1;
 			let s = { ctg:t[0], pos:t[1]-1, ctg2:t[0], pos2:en, ori:">>" };
 			if (/^[A-Z,]+$/.test(t[4])) { // assume full allele sequence; override SVTYPE/SVLEN even if present
 				let alt = t[4].split(",");
 				for (let i = 0; i < alt.length; ++i) {
 					const a = alt[i], len = a.length - rlen;
-					if (Math.abs(len) < min_read_len) continue;
+					if (Math.abs(len) < min_len) continue;
 					if (len < 0)
 						sv.push({ ctg:s.ctg, pos:s.pos, ctg2:s.ctg, pos2:en, svtype:"DEL", svlen:len, ori:">>" });
 					else
@@ -803,11 +804,11 @@ function gc_parse_sv(min_read_len, fn) {
 					if (ignore_id[t[2]]) continue; // ignore previously visited ID
 					ignore_id[t[2]] = 1;
 				}
-				if ((m = /\b(MATE_ID|MATEID)=(\d+)/.exec(info)) != null)
+				if ((m = /\b(MATE_ID|MATEID)=([^\s;]+)/.exec(info)) != null)
 					ignore_id[m[2]] = 1;
 				if (svtype == null) throw Error("can't determine SVTYPE"); // we don't infer SVTYPE from breakpoint
 				s.svtype = svtype;
-				if (svtype !== "BND" && Math.abs(svlen) < min_read_len) continue; // too short
+				if (svtype !== "BND" && Math.abs(svlen) < min_len) continue; // too short
 				if (svtype === "DEL" && svlen > 0) svlen = -svlen; // correct SVLEN as some VCF encodes this differently
 				s.svlen = svlen;
 				if ((m = /\bEND=(\d+)/.exec(info)) != null) {
@@ -822,7 +823,7 @@ function gc_parse_sv(min_read_len, fn) {
 				else if ((m = /^\[([^\s:]+):(\d+)\[[A-Z]+$/.exec(t[4])) != null) s.ctg2 = m[1], s.pos2 = parseInt(m[2]), s.ori = "<>";
 				else if ((m = /^[A-Z]+\]([^\s:]+):(\d+)\]$/.exec(t[4])) != null) s.ctg2 = m[1], s.pos2 = parseInt(m[2]), s.ori = "><";
 				if (svtype !== "BND" && s.ctg !== s.ctg2) throw Error("different contigs for non-BND type");
-				if (svtype === "BND" && s.ctg === s.ctg2 && Math.abs(svlen) < min_read_len) continue;
+				if (svtype === "BND" && s.ctg === s.ctg2 && Math.abs(svlen) < min_len) continue;
 				if (s.ctg === s.ctg2 && s.pos > s.pos2) {
 					let tmp = s.pos;
 					s.pos = s.pos2, s.pos2 = tmp;

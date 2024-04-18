@@ -161,14 +161,12 @@ def get_indel(opt, z):
                     if op == "+":  # insertion
                         # NOTE: change from (x-1,x+1) to (x,x)?
                         if a[i].st != x or a[i].en != x or a[i].len != length:
-                            # print(a[i].st, x, a[i].en, x + length, -length, a[i].len)
                             raise Exception(
                                 "CIGAR and ds insertion not consistent line number"
                             )
                         a[i].indel_seq = ds_str
                         i += 1
                     elif op == "-":  # deletion
-                        # print(a[i].st, x, a[i].en, x + length, -length, a[i].len)
                         if a[i].st != x or a[i].en != x + length or a[i].len != -length:
                             raise Exception("CIGAR and ds deletion not consistent")
                         a[i].indel_seq = ds_str

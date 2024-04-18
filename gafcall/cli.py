@@ -221,8 +221,6 @@ def sv(
                 options.cen[t[0]].append([int(t[1]), int(t[2])])
             for ctg in options.cen:
                 options.cen[ctg].sort(key=lambda x: x[0])
-    # click.echo(options)
-    # click.echo(filename)
     load_reads(filename[0], options)
 
 
@@ -235,14 +233,14 @@ def sv(
     type=float,
     help="maximum allele length different ratio",
 )
-@click.option("-c", required=False, default=3, type=int, help="minimum sv counts")
+@click.option("-c", required=False, default=4, type=int, help="minimum sv counts")
 @click.option(
-    "-s", required=False, default=3, type=int, help="minimum count per strand"
+    "-s", required=False, default=2, type=int, help="minimum count per strand"
 )
 @click.option(
     "-r",
     required=False,
-    default=10,
+    default=0,
     type=int,
     help="min min(TSD_len,polyA_len) to tag a candidate RT",
 )
@@ -338,14 +336,16 @@ def vcf(input):
 ##FORMAT=<ID=DV,Number=1,Type=Integer,Description="Number of variant reads">
 ##FORMAT=<ID=VAF,Number=1,Type=Float,Description="Variant allele frequency">"""
             )
-            print(line.strip(), "FORMAT", "SAMPLE", sep="\t")
+            # print(line.strip(), "FORMAT", "SAMPLE", sep="\t")
+            print(line.strip())
         elif line.startswith("##"):
             print(line.strip())
         else:
             line = line.split()
             line[6] = "PASS"
             line = "\t".join(line)
-            print(line.strip(), "GT:GQ:VAF:DR:DV", "0/1:.:.:.:.", sep="\t")
+            # print(line.strip(), "GT:GQ:VAF:DR:DV", "0/1:.:.:.:.", sep="\t")
+            print(line.strip(), sep="\t")
 
 
 @cli.command()

@@ -1,6 +1,6 @@
 #!/usr/bin/env k8
 
-const gc_version = "r105";
+const gc_version = "r106";
 
 /**************
  * From k8.js *
@@ -983,6 +983,30 @@ function gc_cmd_eval(args) {
 	print("RP", tot_fp, fp, (fp / tot_fp).toFixed(4), args[1]);
 }
 
+/**********************
+ * Join two GSV files *
+ **********************/
+
+function gc_cmd_join(args) {
+	for (const o of getopt(args, "")) {
+	}
+	if (args.length < 2) {
+		print("Usgae: gafcall.js join <filter.gsv> <out.gsv>");
+		return;
+	}
+	let h = {}
+	for (const line of k8_readline(args[0])) {
+		let t = line.split("\t");
+		const name = /^[><]+$/.test(t[2])? t[5] : t[3];
+		h[name] = 1;
+	}
+	for (const line of k8_readline(args[1])) {
+		let t = line.split("\t");
+		const name = /^[><]+$/.test(t[2])? t[5] : t[3];
+		if (name in h) print(line);
+	}
+}
+
 /*******************************
  * Convert to VCF (unfinished) *
  *******************************/
@@ -1040,6 +1064,7 @@ function main(args)
 		print("  merge        merge extracted INDELs and breakpoints");
 		print("  eval         evaluate SV calls");
 		print("  format       print in the gafcall format");
+		print("  join         join two 'extract' outputs");
 		print("  version      print version number");
 		exit(1);
 	}
@@ -1049,6 +1074,7 @@ function main(args)
 	else if (cmd === "merge" || cmd === "mergesv") gc_cmd_merge(args);
 	else if (cmd === "eval") gc_cmd_eval(args);
 	else if (cmd === "format") gc_cmd_format(args);
+	else if (cmd === "join") gc_cmd_join(args);
 	else if (cmd === "version") {
 		print(gc_version);
 		return;

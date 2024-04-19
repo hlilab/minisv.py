@@ -1,6 +1,6 @@
 #!/usr/bin/env k8
 
-const gc_version = "r104";
+const gc_version = "r105";
 
 /**************
  * From k8.js *
@@ -979,8 +979,8 @@ function gc_cmd_eval(args) {
 	const test = gc_parse_sv(min_read_len, args[1], opt.ignore_flt);
 	const [tot_fn, fn] = gc_cmp_sv(opt, test, base, "FN");
 	const [tot_fp, fp] = gc_cmp_sv(opt, base, test, "FP");
-	print("RN", tot_fn, fn, (fn / tot_fn).toFixed(4));
-	print("RP", tot_fp, fp, (fp / tot_fp).toFixed(4));
+	print("RN", tot_fn, fn, (fn / tot_fn).toFixed(4), args[0]);
+	print("RP", tot_fp, fp, (fp / tot_fp).toFixed(4), args[1]);
 }
 
 /*******************************

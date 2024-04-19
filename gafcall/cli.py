@@ -2,12 +2,17 @@
 
 import sys
 from dataclasses import dataclass
+from typing import Optional
 
 import rich_click as click
 
+from .eval import gc_read_bed
+
 ##from .cygafcall import GafParser as cy_GafParser
 from .gafcall import GafParser
-from .io import merge_indel_breakpoints, write_vcf
+from .io import gc_cmd_format, merge_indel_breakpoints, write_vcf
+
+__version__ = "0.1"
 
 
 @dataclass
@@ -47,10 +52,14 @@ class EvalOpt:
     min_len_ratio: float = 0.6
     dbg: bool = False
     print_err: bool = False
+    bed: Optional[str] = None
+    min_vaf: float = 0
 
 
 @click.group(help="Pangenome SV tool commands")
-def cli():
+@click.version_option(__version__)
+@click.pass_context
+def cli(ctx):
     pass
 
 
@@ -282,6 +291,9 @@ def merge(
 @click.option("-svlen", required=False, default=100, type=int, help="sv minimum length")
 @click.option("-c", required=False, default=3, type=int, help="minimum sv counts")
 @click.option(
+    "-v", required=False, default=0, type=float, help="ignore VAF below FLOAT"
+)
+@click.option(
     "-lenratio",
     required=False,
     default=0.6,
@@ -295,6 +307,7 @@ def merge(
     type=float,
     help="min read ratio",
 )
+@click.option("-b", type=click.Path(exists=True), help="verbose option for debug")
 @click.option("-d", is_flag=True, help="verbose option for debug")
 @click.option("-e", is_flag=True, help="verbose option for debug")
 @click.argument("base", type=click.Path(exists=True))
@@ -307,6 +320,8 @@ def eval(
     lenratio: float,
     d: bool,
     e: bool,
+    v: float,
+    b,
     base,
     compare,
 ):
@@ -319,9 +334,20 @@ def eval(
         read_len_ratio=r,
         min_len_ratio=lenratio,  # NOTE: the option are not input
         dbg=d,
+        bed=gc_read_bed(b),
         print_err=e,
+        min_vaf=v,
     )
     eval(base, compare, options)
+
+
+@cli.command()
+@click.option(
+    "-minlen", required=False, default=100, type=int, help="minimum sv length"
+)
+@click.argument("input", type=click.Path(exists=True))
+def format(minlen: int, input):
+    gc_cmd_format(minlen, input)
 
 
 @cli.command()
@@ -336,7 +362,6 @@ def vcf(input):
 ##FORMAT=<ID=DV,Number=1,Type=Integer,Description="Number of variant reads">
 ##FORMAT=<ID=VAF,Number=1,Type=Float,Description="Variant allele frequency">"""
             )
-            # print(line.strip(), "FORMAT", "SAMPLE", sep="\t")
             print(line.strip())
         elif line.startswith("##"):
             print(line.strip())

@@ -99,7 +99,7 @@ def get_indel(opt, z):
                 if op == "I":
                     # [start, end, indel length, tsd length, polyA length, tsd seq, indel seq]
                     a.append(
-                        # NOTE: change from (x-1,x+1) to (x,x)?
+                        # NOTE: change from (x-1,x+1) to (x,x)? to be more accurate in indels
                         indel_coord(
                             st=x,
                             en=x,

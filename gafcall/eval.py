@@ -15,8 +15,11 @@ def eval(base, test, opt):
     Returns:
         None
     """
-    base = gc_parse_sv(opt, base)
-    test = gc_parse_sv(opt, test)
+
+    min_read_len = math.floor(opt.min_len * opt.read_len_ratio + 0.499)
+
+    base = gc_parse_sv(min_read_len, base)
+    test = gc_parse_sv(min_read_len, test)
 
     tot_fn, fn = gc_cmp_sv(opt, test, base, "FN")
     tot_fp, fp = gc_cmp_sv(opt, base, test, "FP")
@@ -24,8 +27,7 @@ def eval(base, test, opt):
     print("RP", tot_fp, fp, round(fp / tot_fp, 4), sep="\t")
 
 
-def gc_parse_sv(opt, file_path):
-    min_read_len = math.floor(opt.min_len * opt.read_len_ratio + 0.499)
+def gc_parse_sv(min_read_len, file_path):
     sv = []
     ignore_id = {}
     with open(file_path) as f:
@@ -54,8 +56,6 @@ def gc_parse_sv(opt, file_path):
                 # NOTE: BED for CIGAR INDEL?
                 type = 2
                 info = t[6]
-            # else:
-            #    raise Exception('type == 0')
 
             if type == 0:
                 continue
@@ -74,6 +74,10 @@ def gc_parse_sv(opt, file_path):
                 t[2] = int(t[2])
                 if t[1] > t[2]:
                     raise Exception("incorrect BED format")
+
+                if abs(svlen) < min_read_len:
+                    continue
+
                 sv.append(
                     svinfo(
                         ctg=t[0],
@@ -83,11 +87,16 @@ def gc_parse_sv(opt, file_path):
                         ori=">>",
                         SVTYPE=svtype,
                         SVLEN=svlen,
+                        vaf=1,
                     )
                 )
             elif type == 3:
                 # breakpoint line
                 t[4] = int(t[4])
+
+                if t[0] == t[3] and abs(svlen) < min_read_len:
+                    continue
+
                 sv.append(
                     svinfo(
                         ctg=t[0],
@@ -97,17 +106,27 @@ def gc_parse_sv(opt, file_path):
                         ori=t[2],
                         SVTYPE=svtype,
                         SVLEN=svlen,
+                        vaf=1,
                     )
                 )
             elif type == 1:
                 # VCF line
+                # VCF filter
+                if t[6] != "PASS" and t[6] != ".":
+                    continue
+
                 # reference allele
                 rlen = len(t[3])
                 en = t[1] + rlen - 1
 
                 # initialize a sv info object
-                s = svinfo(ctg=t[0], pos=t[1] - 1, ctg2=t[0], pos2=en, ori=">>")
+                s = svinfo(ctg=t[0], pos=t[1] - 1, ctg2=t[0], pos2=en, ori=">>", vaf=1)
                 # indel
+
+                m = re.findall(r"\bVAF=([^\s;]+)", info)
+                if len(m) > 0:
+                    s.vaf = float(m[0])
+
                 if re.match(r"^[A-Z,]+$", t[4]):
                     # assume full allele sequence; override SVTYPE/SVLEN even if present
                     # multiple allele
@@ -131,6 +150,7 @@ def gc_parse_sv(opt, file_path):
                                     ori=">>",
                                     SVTYPE="DEL",
                                     SVLEN=length,
+                                    var=s.vaf,
                                 )
                             )
                         else:
@@ -144,6 +164,7 @@ def gc_parse_sv(opt, file_path):
                                     ori=">>",
                                     SVTYPE="INS",
                                     SVLEN=length,
+                                    var=s.vaf,
                                 )
                             )
                 else:
@@ -187,14 +208,12 @@ def gc_parse_sv(opt, file_path):
                             s.pos2 = s.pos + abs(svlen)
 
                     # match VCF alt allele
-                    # NOTE: ^\s in js?
-                    m = re.findall(r"^[A-Z]+\[([^s:]+):(\d+)\[$", t[4])
-                    # NOTE: ^\s in js?
-                    m1 = re.findall(r"^\]([^s:]+):(\d+)\][A-Z]+$", t[4])
+                    m = re.findall(r"^[A-Z]+\[([^\s:]+):(\d+)\[$", t[4])
+                    m1 = re.findall(r"^\]([^\s:]+):(\d+)\][A-Z]+$", t[4])
                     # [p[t: reverse comp piece extending right of p is joined before t
-                    m2 = re.findall(r"^\[([^s:]+):(\d+)\[[A-Z]+$", t[4])
+                    m2 = re.findall(r"^\[([^\s:]+):(\d+)\[[A-Z]+$", t[4])
                     # t]p]: reverse comp piece extending left of p is joined after t
-                    m3 = re.findall(r"^[A-Z]+\]([^s:]+):(\d+)\]$", t[4])
+                    m3 = re.findall(r"^[A-Z]+\]([^\s:]+):(\d+)\]$", t[4])
                     if len(m) > 0:
                         s.ctg2 = m[0]
                         s.pos2 = int(m[1])
@@ -206,15 +225,11 @@ def gc_parse_sv(opt, file_path):
                     elif len(m2) > 0:
                         s.ctg2 = m[0]
                         s.pos2 = int(m[1])
-                        # NOTE: why the direction? should be symmetric
-                        #       maybe <>
-                        s.ori = "><"
+                        s.ori = "<>"
                     elif len(m3) > 0:
                         s.ctg2 = m[0]
                         s.pos2 = int(m[1])
-                        # NOTE: why the direction?
-                        #       maybe ><
-                        s.ori = "<>"
+                        s.ori = "><"
 
                     if svtype != "BND" and s.ctg != s.ctg2:
                         # not possible for indel, dup and inversion
@@ -232,11 +247,6 @@ def gc_parse_sv(opt, file_path):
                         s.pos = s.pos2
                         s.pos2 = tmp
                     sv.append(s)
-    if opt.dbg:
-        for i in range(len(sv)):
-            s = sv[i]
-            print(s.ctg, s.pos, s.ori, s.ctg2, s.pos2, s.SVTYPE, s.SVLEN, sep="\t")
-
     return sv
 
 
@@ -278,6 +288,17 @@ def gc_cmp_sv(opt, base, test, label):
         if t.SVTYPE == "BND" and t.ctg == t.ctg2 and abs(t.SVLEN) < opt.min_len:
             continue
 
+        if t.vaf is not None and t.vaf < opt.min_vaf:
+            continue
+
+        if opt.bed is not None:
+            if t.ctg not in opt.bed or t.ctg2 not in opt.bed:
+                continue
+            if len(iit_overlap(opt.bed[t.ctg], t.pos, t.pos + 1)) == 0:
+                continue
+            if len(iit_overlap(opt.bed[t.ctg2], t.pos2, t.pos2 + 1)) == 0:
+                continue
+
         tot += 1
         n = eval1(opt, h, t.ctg, t.pos, t) + eval1(opt, h, t.ctg2, t.pos2, t)
         if n == 0:
@@ -294,7 +315,6 @@ def gc_cmp_sv(opt, base, test, label):
                     t.SVLEN,
                     sep="\t",
                 )
-
     return [tot, error]
 
 
@@ -302,7 +322,7 @@ def gc_cmp_sv(opt, base, test, label):
 class iit_obj:
     st: int
     en: int
-    max: int = 0
+    max: Optional[int] = 0
     data: Optional[svinfo] = None
 
 
@@ -320,7 +340,7 @@ def iit_sort_copy(a):
 
 def iit_index(a):
     """
-    NOTE: what is iit index for?
+    reference: https://github.com/attractivechaos/plb2/blob/master/src/python/bedcov.py
     """
     if len(a) == 0:
         return -1
@@ -433,7 +453,7 @@ def same_sv1(opt, b, t):
 
     match1 = match2 = 0
     # check the coordinates of end points within window
-    # NOTE: what does match1 and match2 denote? two breakpoints?
+    # NOTE: what does match1 and match2 denote? two breakpoints? Yes
     if (
         t.ctg == b.ctg
         and t.pos >= b.pos - opt.win_size
@@ -472,3 +492,20 @@ def same_sv1(opt, b, t):
         )
     else:
         return (match1 & 1) != 0 and (match2 & 2) != 0
+
+
+def gc_read_bed(fn):
+    h = {}
+    with open(fn) as fin_handler:
+        for line in fin_handler:
+            t = line.strip().split("\t")
+            if len(t) < 3:
+                continue
+            if t[0] not in h:
+                h[t[0]] = []
+            h[t[0]].append(iit_obj(st=int(t[1]), en=int(t[2]), data=None))
+
+    for ctg in h:
+        h[ctg] = iit_sort_copy(h[ctg])
+        iit_index(h[ctg])
+    return h

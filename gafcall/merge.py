@@ -105,11 +105,11 @@ def splitmix32(a):
         nonlocal a
         a |= 0
         a = (a + 0x9E3779B9) & 0xFFFFFFFF
-        t = (a ^ (a >> 16)) & 0xFFFFFFFF
+        t = a ^ (a >> 16)
         t = (t * 0x21F0AAAD) & 0xFFFFFFFF
-        t = (t ^ (t >> 15)) & 0xFFFFFFFF
+        t = t ^ (t >> 15)
         t = (t * 0x735A2D97) & 0xFFFFFFFF
-        t = (t ^ (t >> 15)) & 0xFFFFFFFF
+        t = t ^ (t >> 15)
         return t / 4294967296.0
 
     return generate_random

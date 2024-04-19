@@ -6,6 +6,7 @@ import gzip
 import re
 from dataclasses import dataclass
 
+from .eval import gc_parse_sv
 from .regex import re_info
 
 # from .identify_breaks_v5 import call_breakpoints
@@ -257,3 +258,11 @@ def write_vcf(opt, input):
             "1/1",
             sep="\t",
         )
+
+
+def gc_cmd_format(min_read_len, vcf):
+    sv = gc_parse_sv(min_read_len, vcf)
+
+    for i in range(len(sv)):
+        s = sv[i]
+        print(s.ctg, s.pos, s.ori, s.ctg2, s.pos2, s.SVTYPE, s.SVLEN, sep="\t")

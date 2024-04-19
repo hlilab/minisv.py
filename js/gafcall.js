@@ -1,6 +1,6 @@
 #!/usr/bin/env k8
 
-const gc_version = "r103";
+const gc_version = "r104";
 
 /**************
  * From k8.js *
@@ -758,8 +758,9 @@ function gc_cmd_merge(args) {
  * Parse and reformat SV *
  *************************/
 
-function gc_parse_sv(min_len, fn) {
+function gc_parse_sv(min_len, fn, ignore_flt) {
 	let sv = [], ignore_id = {};
+	ignore_flt = typeof ignore_flt !== "undefined"? ignore_flt : true;
 	for (const line of k8_readline(fn)) {
 		if (line[0] === "#") continue;
 		let m, t = line.split("\t");
@@ -786,12 +787,12 @@ function gc_parse_sv(min_len, fn) {
 			if (t[0] === t[3] && Math.abs(svlen) < min_len) continue;
 			sv.push({ ctg:t[0], pos:t[1], ctg2:t[3], pos2:t[4], ori:t[2], svtype:svtype, svlen:svlen, vaf:1 });
 		} else if (type == 1) { // VCF line
-			if (t[6] !== "PASS" && t[6] !== ".") continue; // ignore filtered calls
+			if (!ignore_flt && t[6] !== "PASS" && t[6] !== ".") continue; // ignore filtered calls
 			let rlen = t[3].length, en = t[1] + rlen - 1;
 			let s = { ctg:t[0], pos:t[1]-1, ctg2:t[0], pos2:en, ori:">>", vaf:1 };
 			if ((m = /\bVAF=([^\s;]+)/.exec(info)) != null)
 				s.vaf = parseFloat(m[1]);
-			if (/^[A-Z,]+$/.test(t[4])) { // assume full allele sequence; override SVTYPE/SVLEN even if present
+			if (/^[A-Z,\*]+$/.test(t[4])) { // assume full allele sequence; override SVTYPE/SVLEN even if present
 				let alt = t[4].split(",");
 				for (let i = 0; i < alt.length; ++i) {
 					const a = alt[i], len = a.length - rlen;
@@ -808,7 +809,7 @@ function gc_parse_sv(min_len, fn) {
 				}
 				if ((m = /\b(MATE_ID|MATEID)=([^\s;]+)/.exec(info)) != null)
 					ignore_id[m[2]] = 1;
-				if (svtype == null) throw Error("can't determine SVTYPE"); // we don't infer SVTYPE from breakpoint
+				if (svtype == null) throw Error(`can't determine SVTYPE: ${t.join("\t")}`); // we don't infer SVTYPE from breakpoint
 				s.svtype = svtype;
 				if (svtype !== "BND" && Math.abs(svlen) < min_len) continue; // too short
 				if (svtype === "DEL" && svlen > 0) svlen = -svlen; // correct SVLEN as some VCF encodes this differently
@@ -838,15 +839,16 @@ function gc_parse_sv(min_len, fn) {
 }
 
 function gc_cmd_format(args) {
-	let min_read_len = 100;
-	for (const o of getopt(args, "l:")) {
+	let min_read_len = 100, ignore_flt = false;
+	for (const o of getopt(args, "l:F")) {
 		if (o.opt === "-l") min_read_len = parseNum(o.arg);
+		else if (o.opt === "-F") ignore_flt = true;
 	}
 	if (args.length == 0) {
 		print("Usage: gafcall.js format [-l NUM] <in.vcf>");
 		return;
 	}
-	const sv = gc_parse_sv(min_read_len, args[0]);
+	const sv = gc_parse_sv(min_read_len, args[0], ignore_flt);
 	for (let i = 0; i < sv.length; ++i) {
 		const s = sv[i];
 		print(s.ctg, s.pos, s.ori, s.ctg2, s.pos2, s.svtype, s.svlen);
@@ -947,8 +949,8 @@ function gc_read_bed(fn) {
 }
 
 function gc_cmd_eval(args) {
-	let opt = { min_len:100, read_len_ratio:0.8, win_size:500, min_len_ratio:0.6, min_vaf:0, bed:null, dbg:false, print_err:false };
-	for (const o of getopt(args, "dr:l:w:em:v:b:")) {
+	let opt = { min_len:100, read_len_ratio:0.8, win_size:500, min_len_ratio:0.6, min_vaf:0, bed:null, dbg:false, print_err:false, ignore_flt:false };
+	for (const o of getopt(args, "dr:l:w:em:v:b:F")) {
 		if (o.opt === "-d") opt.dbg = true;
 		else if (o.opt === "-b") opt.bed = gc_read_bed(o.arg);
 		else if (o.opt === "-l") opt.min_len = parseNum(o.arg);
@@ -956,6 +958,7 @@ function gc_cmd_eval(args) {
 		else if (o.opt === "-r") opt.read_len_ratio = parseFloat(o.arg);
 		else if (o.opt === "-w") opt.win_size = parseNum(o.arg);
 		else if (o.opt === "-v") opt.min_vaf = parseFloat(o.arg);
+		else if (o.opt === "-F") opt.ignore_flt = true;
 		else if (o.opt === "-e") opt.print_err = true;
 	}
 	if (args.length < 2) {
@@ -967,12 +970,13 @@ function gc_cmd_eval(args) {
 		print(`  -r FLOAT    read SVs longer than {-l}*FLOAT [${opt.read_len_ratio}]`);
 		print(`  -m FLOAT    two SVs regarded the same if length ratio above [${opt.min_len_ratio}]`);
 		print(`  -v FLOAT    ignore VAF below FLOAT (requiring VAF in VCF) [${opt.min_vaf}]`);
+		print(`  -F          ignore FILTER in VCF`);
 		print(`  -e          print errors`);
 		return;
 	}
 	const min_read_len = Math.floor(opt.min_len * opt.read_len_ratio + .499);
-	const base = gc_parse_sv(min_read_len, args[0]);
-	const test = gc_parse_sv(min_read_len, args[1]);
+	const base = gc_parse_sv(min_read_len, args[0], opt.ignore_flt);
+	const test = gc_parse_sv(min_read_len, args[1], opt.ignore_flt);
 	const [tot_fn, fn] = gc_cmp_sv(opt, test, base, "FN");
 	const [tot_fp, fp] = gc_cmp_sv(opt, base, test, "FP");
 	print("RN", tot_fn, fn, (fn / tot_fn).toFixed(4));

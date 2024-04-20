@@ -1,6 +1,6 @@
 #!/usr/bin/env k8
 
-const gc_version = "r107";
+const gc_version = "r108";
 
 /**************
  * From k8.js *
@@ -758,9 +758,10 @@ function gc_cmd_merge(args) {
  * Parse and reformat SV *
  *************************/
 
-function gc_parse_sv(min_len, fn, ignore_flt) {
+function gc_parse_sv(min_len, fn, ignore_flt, check_gt) {
 	let sv = [], ignore_id = {};
 	ignore_flt = typeof ignore_flt !== "undefined"? ignore_flt : true;
+	check_gt = typeof check_gt !== "undefined"? check_gt : true;
 	for (const line of k8_readline(fn)) {
 		if (line[0] === "#") continue;
 		let m, t = line.split("\t");
@@ -788,6 +789,7 @@ function gc_parse_sv(min_len, fn, ignore_flt) {
 			sv.push({ ctg:t[0], pos:t[1], ctg2:t[3], pos2:t[4], ori:t[2], svtype:svtype, svlen:svlen, vaf:1 });
 		} else if (type == 1) { // VCF line
 			if (!ignore_flt && t[6] !== "PASS" && t[6] !== ".") continue; // ignore filtered calls
+			if (check_gt && t.length >= 9 && /^0[\/\|]0/.test(t[9])) continue; // not a variant
 			let rlen = t[3].length, en = t[1] + rlen - 1;
 			let s = { ctg:t[0], pos:t[1]-1, ctg2:t[0], pos2:en, ori:">>", vaf:1 };
 			if ((m = /\bVAF=([^\s;]+)/.exec(info)) != null)
@@ -839,16 +841,21 @@ function gc_parse_sv(min_len, fn, ignore_flt) {
 }
 
 function gc_cmd_format(args) {
-	let min_read_len = 100, ignore_flt = false;
-	for (const o of getopt(args, "l:F")) {
+	let min_read_len = 100, ignore_flt = false, check_gt = true;
+	for (const o of getopt(args, "l:FG")) {
 		if (o.opt === "-l") min_read_len = parseNum(o.arg);
 		else if (o.opt === "-F") ignore_flt = true;
+		else if (o.opt === "-G") check_gt = false;
 	}
 	if (args.length == 0) {
 		print("Usage: gafcall.js format [-l NUM] <in.vcf>");
+		print("Options:");
+		print(`  -l NUM       min length [${min_read_len}]`);
+		print(`  -F           ignore FILTER field in VCF`);
+		print(`  -G           don't check GT in VCF`);
 		return;
 	}
-	const sv = gc_parse_sv(min_read_len, args[0], ignore_flt);
+	const sv = gc_parse_sv(min_read_len, args[0], ignore_flt, check_gt);
 	for (let i = 0; i < sv.length; ++i) {
 		const s = sv[i];
 		print(s.ctg, s.pos, s.ori, s.ctg2, s.pos2, s.svtype, s.svlen);
@@ -949,8 +956,8 @@ function gc_read_bed(fn) {
 }
 
 function gc_cmd_eval(args) {
-	let opt = { min_len:100, read_len_ratio:0.8, win_size:500, min_len_ratio:0.6, min_vaf:0, bed:null, dbg:false, print_err:false, ignore_flt:false };
-	for (const o of getopt(args, "dr:l:w:em:v:b:F")) {
+	let opt = { min_len:100, read_len_ratio:0.8, win_size:500, min_len_ratio:0.6, min_vaf:0, bed:null, dbg:false, print_err:false, ignore_flt:false, check_gt:true };
+	for (const o of getopt(args, "dr:l:w:em:v:b:FG")) {
 		if (o.opt === "-d") opt.dbg = true;
 		else if (o.opt === "-b") opt.bed = gc_read_bed(o.arg);
 		else if (o.opt === "-l") opt.min_len = parseNum(o.arg);
@@ -959,6 +966,7 @@ function gc_cmd_eval(args) {
 		else if (o.opt === "-w") opt.win_size = parseNum(o.arg);
 		else if (o.opt === "-v") opt.min_vaf = parseFloat(o.arg);
 		else if (o.opt === "-F") opt.ignore_flt = true;
+		else if (o.opt === "-G") opt.check_gt = false;
 		else if (o.opt === "-e") opt.print_err = true;
 	}
 	if (args.length < 2) {
@@ -971,12 +979,13 @@ function gc_cmd_eval(args) {
 		print(`  -m FLOAT    two SVs regarded the same if length ratio above [${opt.min_len_ratio}]`);
 		print(`  -v FLOAT    ignore VAF below FLOAT (requiring VAF in VCF) [${opt.min_vaf}]`);
 		print(`  -F          ignore FILTER in VCF`);
+		print(`  -G          don't check GT in VCF`);
 		print(`  -e          print errors`);
 		return;
 	}
 	const min_read_len = Math.floor(opt.min_len * opt.read_len_ratio + .499);
-	const base = gc_parse_sv(min_read_len, args[0], opt.ignore_flt);
-	const test = gc_parse_sv(min_read_len, args[1], opt.ignore_flt);
+	const base = gc_parse_sv(min_read_len, args[0], opt.ignore_flt, opt.check_gt);
+	const test = gc_parse_sv(min_read_len, args[1], opt.ignore_flt, opt.check_gt);
 	const [tot_fn, fn] = gc_cmp_sv(opt, test, base, "FN");
 	const [tot_fp, fp] = gc_cmp_sv(opt, base, test, "FP");
 	print("RN", tot_fn, fn, (fn / tot_fn).toFixed(4), args[0]);

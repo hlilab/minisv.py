@@ -1,6 +1,6 @@
 #!/usr/bin/env k8
 
-const gc_version = "r109";
+const gc_version = "r110";
 
 /**************
  * From k8.js *
@@ -840,26 +840,64 @@ function gc_parse_sv(min_len, fn, ignore_flt, check_gt) {
 	return sv;
 }
 
-function gc_cmd_format(args) {
-	let min_read_len = 100, ignore_flt = false, check_gt = false;
-	for (const o of getopt(args, "l:FG")) {
+function gc_read_bed(fn) {
+	let h = {};
+	for (const line of k8_readline(fn)) {
+		let t = line.split("\t");
+		if (t.length < 3) continue;
+		if (h[t[0]] == null) h[t[0]] = [];
+		h[t[0]].push({ st:parseInt(t[1]), en:parseInt(t[2]), data:null });
+	}
+	for (const ctg in h) {
+		h[ctg] = iit_sort_copy(h[ctg]);
+		iit_index(h[ctg]);
+	}
+	return h;
+}
+
+function gc_cmd_view(args) {
+	let min_read_len = 100, ignore_flt = false, check_gt = false, count_long = false, bed = null;
+	for (const o of getopt(args, "l:FGCb:")) {
 		if (o.opt === "-l") min_read_len = parseNum(o.arg);
 		else if (o.opt === "-F") ignore_flt = true;
 		else if (o.opt === "-G") check_gt = true;
+		else if (o.opt === "-C") count_long = true;
+		else if (o.opt === "-b") bed = gc_read_bed(o.arg);
 	}
 	if (args.length == 0) {
-		print("Usage: gafcall.js format [-l NUM] <in.vcf>");
+		print("Usage: gafcall.js view [options] <in.vcf>");
 		print("Options:");
 		print(`  -l NUM       min length [${min_read_len}]`);
+		print(`  -b FILE      regions to include []`);
 		print(`  -F           ignore FILTER field in VCF`);
 		print(`  -G           check GT in VCF`);
+		print(`  -C           count 20kb, 100kb, 1Mb and translocations`);
 		return;
 	}
 	const sv = gc_parse_sv(min_read_len, args[0], ignore_flt, check_gt);
+	let cnt = [ 0, 0, 0, 0 ];
 	for (let i = 0; i < sv.length; ++i) {
 		const s = sv[i];
-		print(s.ctg, s.pos, s.ori, s.ctg2, s.pos2, s.svtype, s.svlen);
+		if (bed != null) {
+			if (bed[s.ctg] == null || bed[s.ctg2] == null) continue;
+			if (iit_overlap(bed[s.ctg],  s.pos,  s.pos  + 1).length === 0) continue;
+			if (iit_overlap(bed[s.ctg2], s.pos2, s.pos2 + 1).length === 0) continue;
+		}
+		if (count_long) {
+			if (s.ctg != s.ctg2) {
+				++cnt[0], ++cnt[1], ++cnt[2], ++cnt[3];
+			} else {
+				const len = Math.abs(s.svlen);
+				if (len >= 1000000) ++cnt[1];
+				if (len >= 100000) ++cnt[2];
+				if (len >= 20000) ++cnt[3];
+			}
+		} else {
+			print(s.ctg, s.pos, s.ori, s.ctg2, s.pos2, s.svtype, s.svlen);
+		}
 	}
+	if (count_long)
+		print(cnt.join("\t"), args[0]);
 }
 
 /**************
@@ -938,21 +976,6 @@ function gc_cmp_sv(opt, base, test, label) {
 		}
 	}
 	return [tot, error];
-}
-
-function gc_read_bed(fn) {
-	let h = {};
-	for (const line of k8_readline(fn)) {
-		let t = line.split("\t");
-		if (t.length < 3) continue;
-		if (h[t[0]] == null) h[t[0]] = [];
-		h[t[0]].push({ st:parseInt(t[1]), en:parseInt(t[2]), data:null });
-	}
-	for (const ctg in h) {
-		h[ctg] = iit_sort_copy(h[ctg]);
-		iit_index(h[ctg]);
-	}
-	return h;
 }
 
 function gc_cmd_eval(args) {
@@ -1091,7 +1114,7 @@ function main(args)
 		print("  extract      extract long INDELs and breakpoints from GAF");
 		print("  merge        merge extracted INDELs and breakpoints");
 		print("  eval         evaluate SV calls");
-		print("  format       print in the gafcall format");
+		print("  view         print in the gafcall format");
 		print("  join         join two 'extract' outputs");
 		print("  version      print version number");
 		exit(1);
@@ -1101,7 +1124,7 @@ function main(args)
 	if (cmd === "extract" || cmd === "getsv") gc_cmd_extract(args);
 	else if (cmd === "merge" || cmd === "mergesv") gc_cmd_merge(args);
 	else if (cmd === "eval") gc_cmd_eval(args);
-	else if (cmd === "format") gc_cmd_format(args);
+	else if (cmd === "view" || cmd === "format") gc_cmd_view(args);
 	else if (cmd === "join") gc_cmd_join(args);
 	else if (cmd === "version") {
 		print(gc_version);

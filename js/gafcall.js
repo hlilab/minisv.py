@@ -1,6 +1,6 @@
 #!/usr/bin/env k8
 
-const gc_version = "r110";
+const gc_version = "r111";
 
 /**************
  * From k8.js *
@@ -874,30 +874,32 @@ function gc_cmd_view(args) {
 		print(`  -C           count 20kb, 100kb, 1Mb and translocations`);
 		return;
 	}
-	const sv = gc_parse_sv(min_read_len, args[0], ignore_flt, check_gt);
-	let cnt = [ 0, 0, 0, 0 ];
-	for (let i = 0; i < sv.length; ++i) {
-		const s = sv[i];
-		if (bed != null) {
-			if (bed[s.ctg] == null || bed[s.ctg2] == null) continue;
-			if (iit_overlap(bed[s.ctg],  s.pos,  s.pos  + 1).length === 0) continue;
-			if (iit_overlap(bed[s.ctg2], s.pos2, s.pos2 + 1).length === 0) continue;
-		}
-		if (count_long) {
-			if (s.ctg != s.ctg2) {
-				++cnt[0], ++cnt[1], ++cnt[2], ++cnt[3];
-			} else {
-				const len = Math.abs(s.svlen);
-				if (len >= 1000000) ++cnt[1];
-				if (len >= 100000) ++cnt[2];
-				if (len >= 20000) ++cnt[3];
+	for (let j = 0; j < args.length; ++j) {
+		const sv = gc_parse_sv(min_read_len, args[j], ignore_flt, check_gt);
+		let cnt = [ 0, 0, 0, 0 ];
+		for (let i = 0; i < sv.length; ++i) {
+			const s = sv[i];
+			if (bed != null) {
+				if (bed[s.ctg] == null || bed[s.ctg2] == null) continue;
+				if (iit_overlap(bed[s.ctg],  s.pos,  s.pos  + 1).length === 0) continue;
+				if (iit_overlap(bed[s.ctg2], s.pos2, s.pos2 + 1).length === 0) continue;
 			}
-		} else {
-			print(s.ctg, s.pos, s.ori, s.ctg2, s.pos2, s.svtype, s.svlen);
+			if (count_long) {
+				if (s.ctg != s.ctg2) {
+					++cnt[0], ++cnt[1], ++cnt[2], ++cnt[3];
+				} else {
+					const len = Math.abs(s.svlen);
+					if (len >= 1000000) ++cnt[1];
+					if (len >= 100000) ++cnt[2];
+					if (len >= 20000) ++cnt[3];
+				}
+			} else {
+				print(s.ctg, s.pos, s.ori, s.ctg2, s.pos2, s.svtype, s.svlen);
+			}
 		}
+		if (count_long)
+			print(cnt.join("\t"), args[j]);
 	}
-	if (count_long)
-		print(cnt.join("\t"), args[0]);
 }
 
 /**************

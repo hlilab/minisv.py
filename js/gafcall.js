@@ -1,6 +1,6 @@
 #!/usr/bin/env k8
 
-const gc_version = "r108";
+const gc_version = "r109";
 
 /**************
  * From k8.js *
@@ -189,14 +189,14 @@ function gc_cmd_extract(args) {
 		print("Usage: gafcall.js extract [options] <stable.gaf>");
 		print("Options:");
 		print(`  -n STR     sample name [${opt.name}]`);
-		print(`  -q INT     min mapq [${opt.min_mapq}]`);
 		print(`  -l INT     min INDEL len [${opt.min_len}]`);
 		print(`  -f FLOAT   min mapped query fraction [${opt.min_frac}]`);
 		print(`  -c INT     max number of long INDELs per 10kb [${opt.max_cnt_10k}]`);
-		print(`  -a INT     penalty for non-polyA bases [${opt.polyA_pen}]`);
+		print(`  -q INT     min mapq [${opt.min_mapq}]`);
 		print(`  -Q INT     min mapq for alignment ends [${opt.min_mapq_end}]`);
 		print(`  -e INT     min alignment length at ends [${opt.min_aln_len_end}]`);
 		print(`  -m INT     min alignment length in the middle [${opt.min_aln_len_mid}]`);
+		print(`  -a INT     penalty for non-polyA bases [${opt.polyA_pen}]`);
 		print(`  -b FILE    BED for centromeres []`);
 		return;
 	}
@@ -761,7 +761,7 @@ function gc_cmd_merge(args) {
 function gc_parse_sv(min_len, fn, ignore_flt, check_gt) {
 	let sv = [], ignore_id = {};
 	ignore_flt = typeof ignore_flt !== "undefined"? ignore_flt : true;
-	check_gt = typeof check_gt !== "undefined"? check_gt : true;
+	check_gt = typeof check_gt !== "undefined"? check_gt : false;
 	for (const line of k8_readline(fn)) {
 		if (line[0] === "#") continue;
 		let m, t = line.split("\t");
@@ -841,18 +841,18 @@ function gc_parse_sv(min_len, fn, ignore_flt, check_gt) {
 }
 
 function gc_cmd_format(args) {
-	let min_read_len = 100, ignore_flt = false, check_gt = true;
+	let min_read_len = 100, ignore_flt = false, check_gt = false;
 	for (const o of getopt(args, "l:FG")) {
 		if (o.opt === "-l") min_read_len = parseNum(o.arg);
 		else if (o.opt === "-F") ignore_flt = true;
-		else if (o.opt === "-G") check_gt = false;
+		else if (o.opt === "-G") check_gt = true;
 	}
 	if (args.length == 0) {
 		print("Usage: gafcall.js format [-l NUM] <in.vcf>");
 		print("Options:");
 		print(`  -l NUM       min length [${min_read_len}]`);
 		print(`  -F           ignore FILTER field in VCF`);
-		print(`  -G           don't check GT in VCF`);
+		print(`  -G           check GT in VCF`);
 		return;
 	}
 	const sv = gc_parse_sv(min_read_len, args[0], ignore_flt, check_gt);
@@ -956,7 +956,7 @@ function gc_read_bed(fn) {
 }
 
 function gc_cmd_eval(args) {
-	let opt = { min_len:100, read_len_ratio:0.8, win_size:500, min_len_ratio:0.6, min_vaf:0, bed:null, dbg:false, print_err:false, ignore_flt:false, check_gt:true };
+	let opt = { min_len:100, read_len_ratio:0.8, win_size:500, min_len_ratio:0.6, min_vaf:0, bed:null, dbg:false, print_err:false, ignore_flt:false, check_gt:false };
 	for (const o of getopt(args, "dr:l:w:em:v:b:FG")) {
 		if (o.opt === "-d") opt.dbg = true;
 		else if (o.opt === "-b") opt.bed = gc_read_bed(o.arg);
@@ -966,7 +966,7 @@ function gc_cmd_eval(args) {
 		else if (o.opt === "-w") opt.win_size = parseNum(o.arg);
 		else if (o.opt === "-v") opt.min_vaf = parseFloat(o.arg);
 		else if (o.opt === "-F") opt.ignore_flt = true;
-		else if (o.opt === "-G") opt.check_gt = false;
+		else if (o.opt === "-G") opt.check_gt = true;
 		else if (o.opt === "-e") opt.print_err = true;
 	}
 	if (args.length < 2) {
@@ -979,7 +979,7 @@ function gc_cmd_eval(args) {
 		print(`  -m FLOAT    two SVs regarded the same if length ratio above [${opt.min_len_ratio}]`);
 		print(`  -v FLOAT    ignore VAF below FLOAT (requiring VAF in VCF) [${opt.min_vaf}]`);
 		print(`  -F          ignore FILTER in VCF`);
-		print(`  -G          don't check GT in VCF`);
+		print(`  -G          check GT in VCF`);
 		print(`  -e          print errors`);
 		return;
 	}

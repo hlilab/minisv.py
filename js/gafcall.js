@@ -1,6 +1,6 @@
 #!/usr/bin/env k8
 
-const gc_version = "r111";
+const gc_version = "r112";
 
 /**************
  * From k8.js *
@@ -1009,12 +1009,28 @@ function gc_cmd_eval(args) {
 		return;
 	}
 	const min_read_len = Math.floor(opt.min_len * opt.read_len_ratio + .499);
-	const base = gc_parse_sv(min_read_len, args[0], opt.ignore_flt, opt.check_gt);
-	const test = gc_parse_sv(min_read_len, args[1], opt.ignore_flt, opt.check_gt);
-	const [tot_fn, fn] = gc_cmp_sv(opt, test, base, "FN");
-	const [tot_fp, fp] = gc_cmp_sv(opt, base, test, "FP");
-	print("RN", tot_fn, fn, (fn / tot_fn).toFixed(4), args[0]);
-	print("RP", tot_fp, fp, (fp / tot_fp).toFixed(4), args[1]);
+
+	if (args.length === 2) { // two-sample mode
+		const base = gc_parse_sv(min_read_len, args[0], opt.ignore_flt, opt.check_gt);
+		const test = gc_parse_sv(min_read_len, args[1], opt.ignore_flt, opt.check_gt);
+		const [tot_fn, fn] = gc_cmp_sv(opt, test, base, "FN");
+		const [tot_fp, fp] = gc_cmp_sv(opt, base, test, "FP");
+		print("RN", tot_fn, fn, (fn / tot_fn).toFixed(4), args[0]);
+		print("RP", tot_fp, fp, (fp / tot_fp).toFixed(4), args[1]);
+	} else { // multi-sample mode
+		let vcf = [];
+		for (let i = 0; i < args.length; ++i)
+			vcf[i] = gc_parse_sv(min_read_len, args[i], opt.ignore_flt, opt.check_gt);
+		for (let i = 0; i < args.length; ++i) {
+			let a = [ "SN" ];
+			for (let j = 0; j < args.length; ++j) {
+				const [cnt, err] = gc_cmp_sv(opt, vcf[i], vcf[j], "XX");
+				if (i != j) a.push((1 - err/cnt).toFixed(4));
+				else a.push(cnt);
+			}
+			print(a.join("\t"), args[i]);
+		}
+	}
 }
 
 /**********************

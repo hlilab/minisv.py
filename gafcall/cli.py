@@ -166,11 +166,11 @@ def getsv(
 @click.option(
     "-l", "--svlen", required=False, default=100, type=int, help="minimum sv length"
 )
-@click.option("-d", is_flag=True, help="verbose option for debug")
 @click.option(
     "-f", required=False, default=0.7, type=float, help="min fraction of reads"
 )
-@click.option("-c", required=False, default=3, help="maximum count of sv in a read")
+@click.option("-d", is_flag=True, help="verbose option for debug")
+@click.option("-c", required=False, default=3, help="maximum count of sv per 10k")
 @click.option("-a", required=False, type=int, default=5, help="polyA penalty")
 @click.option(
     "-e",

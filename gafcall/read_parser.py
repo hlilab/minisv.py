@@ -77,7 +77,29 @@ def load_reads(input_file, opt):
                 if y.cg is None:
                     continue
             else:  # parse SAM format
-                continue
+                if t[0][0] == "@":
+                    continue
+
+                flag = int(t[1])
+                if flag & 0x100:
+                    continue
+
+                # y = alignment(
+                #    qname=t[0],
+                #    mapq=int(t[4]),
+                #    qlen=int(t[1]),
+                #    qst=int(t[2]),
+                #    qen=0,
+                #    strand="-" if (flag & 0x10) else "+",
+                #    path=t[2],
+                #    tlen=0xffffffff,
+                #    tst=int(t[3])-1,
+                #    ten=-1,
+                #    cg=t[5]
+                # )
+
+                # if y.mapq < opt.min_mapq:
+                #    continue
             z.append(y)
         get_indel(opt, z)
         get_breakpoint(opt, z)

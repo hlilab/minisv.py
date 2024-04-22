@@ -151,8 +151,7 @@ def merge_sv(opt, input):
                     # Reservoir sampling for a subset of reads to reduce time
                     p = [-1] * len(sv[i].v)
                     for j in range(len(sv[i].v)):
-                        test = j * rng()
-                        k = j if j < opt.max_check else math.floor(test)
+                        k = j if j < opt.max_check else math.floor(j * rng())
 
                         if k < opt.max_check:
                             p[k] = j

@@ -267,7 +267,7 @@ def sv(
 )  # NOTE: in mgutils, this is forced to be int
 @click.argument("input", type=click.File("r"), default=sys.stdin)
 def merge(
-    w: int, d: float, rr: int, c: int, cc: int, e: float, s: int, r: int, a: int, input
+    w: int, d: float, c: int, s: int, r: int, rr: int, a: int, cc: int, e: float, input
 ):
     """Usage: sort -k 1,1 -k2,2n sv.bed | gafcall merge [options] -"""
     from .merge import merge_sv

@@ -35,6 +35,7 @@ class svinfo:
     tsd_len: Optional[int] = None
     polyA_len: Optional[int] = None
     sv_region: Optional[str] = None
+    name: Optional[str] = None
 
 
 @dataclass
@@ -48,7 +49,6 @@ class svobj:
 
 # NOTE: do we merge this with the eval function
 def parse_sv(t):
-    # print(t)
     v = svinfo(
         ctg=t[0],
         pos=int(t[1]),
@@ -60,6 +60,7 @@ def parse_sv(t):
         _mapq=0,
         strand=None,
         is_bp=False,
+        name=None,
         info=None,
     )
 
@@ -110,6 +111,7 @@ def splitmix32(a):
         t = t ^ (t >> 15)
         t = (t * 0x735A2D97) & 0xFFFFFFFF
         t = t ^ (t >> 15)
+        t = t >> 0
         return t / 4294967296.0
 
     return generate_random
@@ -146,20 +148,19 @@ def merge_sv(opt, input):
                         if same_sv(opt, sv[i].v[j], v):
                             c += 1
                 else:
-                    # reservior sampling for a subset of reads to reduce time
-                    p = []
+                    # Reservoir sampling for a subset of reads to reduce time
+                    p = [-1] * len(sv[i].v)
                     for j in range(len(sv[i].v)):
-                        # NOTE: why not use a constant max_check here
-                        k = j if j < opt.max_check else math.floor(j * rng())
+                        test = j * rng()
+                        k = j if j < opt.max_check else math.floor(test)
 
                         if k < opt.max_check:
-                            p.append(j)
+                            p[k] = j
 
                     for k in range(opt.max_check):
                         if same_sv(opt, sv[i].v[p[k]], v):
                             c += 1
                     c = math.floor(c / opt.max_check * len(sv[i].v) + 0.499)
-
             cnt_same.append(c)
 
         max = 0
@@ -200,8 +201,7 @@ def same_sv(opt, v, w):
         return False
 
     # not on the same contig
-    # NOTE: this not include the cross-chromomsome sv?
-    #       do we merge cross-chrom svs? yes
+    # NOTE: do we merge cross-chrom svs? yes
     if v.ctg != w.ctg:
         return False
 
@@ -241,11 +241,12 @@ def same_sv(opt, v, w):
         # NOTE: is this testing sequence identities?
         if abs(vl - wl) > 0.5 * (vl + wl) * opt.max_diff:
             return False
-
+    # NOTE: what does this mean: TODO: probably we don't want to check tsd_len as it may be cut short by a sequencing error
     return True
 
 
 def write_sv(opt, s):
+    """Selecting the median indexed SV"""
     if len(s) == 0:
         return
 
@@ -261,8 +262,6 @@ def write_sv(opt, s):
         if v.cen_dist is not None and v.cen_dist <= opt.min_cen_dist:
             return
 
-    # NOTE: what is rt_len here?
-    #       is it retrotransposon length?
     rt_len_arr = []
     rt_len = 0
     for i in range(len(s)):
@@ -290,8 +289,9 @@ def write_sv(opt, s):
         if s[i].source not in cnt:
             # NOTE: count the number of sample for each sv
             cnt[s[i].source] = [0, 0]
-        cnt[s[i].source][0 if s[i].strand == "+" else 1] += 1
-        cnt_strand[0 if s[i].strand == "+" else 1] += 1
+        j = 0 if s[i].strand == "+" else 1
+        cnt[s[i].source][j] += 1
+        cnt_strand[j] += 1
         name.append(s[i].name)
 
     mapq = normal_round(mapq / len(s))

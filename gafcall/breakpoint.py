@@ -81,6 +81,7 @@ def get_breakpoint(opt, z):
             cen_str = f";cen_dist={dist0 if dist0 < dist1 else dist1}"
 
             # NOTE: is this condition equal to same chromosome sv?
+            #       we may need to add if c0.ctg == c1.ctg
             if sv_info.st >= 0 and sv_info.en >= sv_info.st:
                 ov = cal_cen_overlap(opt, c0.ctg, sv_info.st, sv_info.en)
                 cen_str += f";cen_overlap={ov}"
@@ -133,7 +134,6 @@ def infer_svtype(opt, c0, c1, ori, qgap):
         )
 
     # long insertion without TSD
-    # NOTE: why not "<<"
     if ori == ">>" and l1 < qgap and qgap - l1 >= opt.min_len:
         return svtype(
             st=c0.pos,
@@ -159,13 +159,12 @@ def infer_svtype(opt, c0, c1, ori, qgap):
         )
 
     # tandem duplication; similar to insertion with TSD
-    # NOTE: why not ">>", only "-" strand?
-    # l2 and l1 relative length condition?
-    # coverage info?
+    # NOTE: if qgap < 0, l = l1 - qgap?
     if ori == "<<" and qgap + l1 >= opt.min_len:
         if qgap < 0:
             st = c0.pos
         else:
+            # NOTE: why c0.pos could < qgap?
             st = c0.pos - qgap if c0.pos > qgap else 0
         en = c1.pos + 1 if qgap < 0 else c1.pos + 1 + qgap
         return svtype(
@@ -194,8 +193,7 @@ def get_end_coor(y):
     """get two end coordinate for one supp alignment"""
     # a path
     if re.match(r"^[><]", y.path):
-        if y.strand != "+":
-            raise Exception("reverse strand on path")
+        assert y.strand == "+", "reverse strand on path"
 
         x = 0
         for m in path_seg_pattern.findall(y.path):
@@ -208,7 +206,7 @@ def get_end_coor(y):
                 r1 = break_end_coord(ctg=m[1], ori=m[0], pos=-1)
                 r1.pos = (
                     st + (y.tst - x) if m[0] == ">" else st + (x + len - y.tst) - 1
-                )  # NOTE: Why - 1 here
+                )  # NOTE: Why - 1 here, for interval
             # NOTE: why not >= x and < x + len
             # NOTE: visulize this compute
             if y.ten > x and y.ten <= x + len:
@@ -218,10 +216,12 @@ def get_end_coor(y):
             x += len
     else:  # a contig
         # NOTE: why output two end of a supp alignment
+        #       y.ten always > y.tst?
         r1 = break_end_coord(ctg=y.path, ori=">" if y.strand == "+" else "<", pos=-1)
         r1.pos = y.tst if y.strand == "+" else y.ten - 1
         r2 = break_end_coord(ctg=y.path, ori=">" if y.strand == "+" else "<", pos=-1)
         r2.pos = y.ten - 1 if y.strand == "+" else y.tst
+    # NOTE: y.qen always > y.qst?
     r1.ql = y.qen - y.qst
     r2.ql = y.qen - y.qst
     return [r1, r2]

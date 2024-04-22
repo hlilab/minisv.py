@@ -99,7 +99,7 @@ def get_indel(opt, z):
                 if op == "I":
                     # [start, end, indel length, tsd length, polyA length, tsd seq, indel seq]
                     a.append(
-                        # NOTE: change from (x-1,x+1) to (x,x)? to be more accurate in indels
+                        # NOTE: to be more accurate in indels
                         indel_coord(
                             st=x,
                             en=x,
@@ -133,7 +133,6 @@ def get_indel(opt, z):
         if len(a) == 0 or len(a) > y.qlen * 1e-4 * opt.max_cnt_10k:
             continue
 
-        # NOTE: what is this for?
         # set stl/enl and str/enr
         for i in range(len(a)):
             a[i].stl = a[i].str = a[i].st
@@ -206,16 +205,16 @@ def get_indel(opt, z):
                 a[i].stl = a[i].st - rlen
                 a[i].enl = a[i].en - rlen
                 # NOTE: for right point, why not choose the minimum point by subtracting llen
-                #       Could CIGAR-based indel have l2 (qgap) < 0
+                #       Could CIGAR-based indel have l2 (qgap) < 0? Yes
                 a[i].str = a[i].st + llen
                 a[i].enr = a[i].en + llen
 
-        # reference segments in the path
+        # genome graph path reference segments
         seg = []
         # with <>: this is a path
         if re.match(r"[><]", y.path):
-            assert y.strand == "+", "reverse strand on path"
             x = 0
+            assert y.strand == "+", "reverse strand on path"
             for m in path_seg_pattern.findall(y.path):
                 st, en = int(m[2]), int(m[3])
                 # [path, absolute path start, absolute path end, path orientation, relative seg start, relative seg end]
@@ -259,14 +258,14 @@ def get_indel(opt, z):
         off_enr = []
         for i in range(len(a)):
             off_stl.append(a[i].stl)
-            off_str.append(a[i].str)
             off_enl.append(a[i].enl)
+            off_str.append(a[i].str)
             off_enr.append(a[i].enr)
 
-        str = path2ctg(seg, off_str, False)
         stl = path2ctg(seg, off_stl, False)
-        enr = path2ctg(seg, off_enr, True)
         enl = path2ctg(seg, off_enl, True)
+        str = path2ctg(seg, off_str, False)
+        enr = path2ctg(seg, off_enr, True)
 
         global_qname = y.qname
 
@@ -274,7 +273,7 @@ def get_indel(opt, z):
             if not (
                 stl[i].seg == str[i].seg
                 and stl[i].seg == enl[i].seg
-                and stl[i].seg == enr[i].seg
+                and str[i].seg == enr[i].seg
             ):  # all on the same segment
                 continue
 
@@ -305,7 +304,6 @@ def get_indel(opt, z):
                 dist_en = cal_cen_dist(opt, s.ctg, en)
                 info1 += f";cen_dist={dist_st if dist_st < dist_en else dist_en}"
 
-            # [chrom, start, end, read_name, mapq, strand, indel length, tsd length, polyA length, indel seq]
             print(
                 s.ctg,
                 st,

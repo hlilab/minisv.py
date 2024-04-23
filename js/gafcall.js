@@ -1,6 +1,6 @@
 #!/usr/bin/env k8
 
-const gc_version = "r112";
+const gc_version = "r113";
 
 /**************
  * From k8.js *
@@ -167,7 +167,7 @@ function gc_cmd_extract(args) {
 	for (const o of getopt(args, "q:Q:l:dc:a:e:m:n:b:", [])) {
 		if (o.opt == "-q") opt.min_mapq = parseInt(o.arg);
 		else if (o.opt == "-Q") opt.min_mapq_end = parseInt(o.arg);
-		else if (o.opt == "-l") opt.min_len = parseInt(o.arg);
+		else if (o.opt == "-l") opt.min_len = parseNum(o.arg);
 		else if (o.opt == "-d") opt.dbg = true;
 		else if (o.opt == "-f") opt.min_frac = parseFloat(o.arg);
 		else if (o.opt == "-c") opt.max_cnt_10k = parseInt(o.arg);

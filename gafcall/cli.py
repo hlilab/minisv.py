@@ -1,5 +1,6 @@
 #!/usr/bin/env python
 
+import re
 import sys
 from dataclasses import dataclass
 from typing import Optional
@@ -10,7 +11,7 @@ from .eval import gc_read_bed
 
 ##from .cygafcall import GafParser as cy_GafParser
 from .gafcall import GafParser
-from .io import gc_cmd_format, merge_indel_breakpoints, write_vcf
+from .io import gc_cmd_view, merge_indel_breakpoints, write_vcf
 
 __version__ = "0.1"
 
@@ -54,6 +55,8 @@ class EvalOpt:
     print_err: bool = False
     bed: Optional[str] = None
     min_vaf: float = 0
+    ignore_flt: bool = False
+    check_gt: bool = False
 
 
 @click.group(help="Pangenome SV tool commands")
@@ -289,29 +292,32 @@ def merge(
 @cli.command()
 @click.option("-w", required=False, default=500, type=int, help="window size")
 @click.option("-svlen", required=False, default=100, type=int, help="sv minimum length")
-@click.option("-c", required=False, default=3, type=int, help="minimum sv counts")
 @click.option(
     "-v", required=False, default=0, type=float, help="ignore VAF below FLOAT"
 )
+@click.option("-c", required=False, default=3, type=int, help="minimum sv counts")
 @click.option(
     "-lenratio",
     required=False,
     default=0.6,
     type=float,
-    help="length ratio similarity between read SV and truthset SV",
+    help="minimum length ratio similarity between read SV and truthset SV",
 )
 @click.option(
     "-r",
     required=False,
     default=0.8,  # NOTE: in js this might be a bug, these ratio name looks confusing
     type=float,
-    help="min read ratio",
+    help="read SVs longer than svlen*FLOAT",
 )
-@click.option("-b", type=click.Path(exists=True), help="verbose option for debug")
+@click.option("-b", type=click.Path(exists=True), help="bed to restrict the comparison")
 @click.option("-d", is_flag=True, help="verbose option for debug")
-@click.option("-e", is_flag=True, help="verbose option for debug")
-@click.argument("base", type=click.Path(exists=True))
-@click.argument("compare", type=click.Path(exists=True))
+@click.option("-e", is_flag=True, help="print errors")
+@click.option("-g", is_flag=True, help="check GT")
+@click.option("-f", is_flag=True, help="ignore VCF filter")
+# @click.argument("base", type=click.Path(exists=True))
+# @click.argument("compare", type=click.Path(exists=True))
+@click.argument("filename", nargs=-1)
 def eval(
     w: int,
     svlen: float,
@@ -322,8 +328,9 @@ def eval(
     e: bool,
     v: float,
     b,
-    base,
-    compare,
+    g,
+    f,
+    filename,
 ):
     """Evaluation of SV calls"""
     from .eval import eval
@@ -337,17 +344,106 @@ def eval(
         bed=gc_read_bed(b),
         print_err=e,
         min_vaf=v,
+        check_gt=g,
+        ignore_flt=f,
     )
-    eval(base, compare, options)
+    eval(filename, options)
+
+
+@dataclass
+class viewopt:
+    min_read_len: int
+    ignore_flt: bool
+    check_gt: bool
+    count_long: bool
+    bed: Optional[str]
+
+
+@cli.command()
+@click.option(
+    "-minlen", required=False, default="100", type=str, help="minimum sv length"
+)
+@click.option("-ignoreflt", is_flag=True, help="ignore FILTER field in VCF")
+@click.option("-gt", is_flag=True, help="check GT in VCF")
+@click.option("-c", is_flag=True, help="count 20kb,100kb,1Mb and translocations")
+@click.option(
+    "-b", required=False, type=click.Path(exists=True), help="restricted bed file"
+)
+@click.argument("input", nargs=-1)
+def view(minlen: int, ignoreflt: bool, gt: bool, c: bool, b: str, input):
+    opt = viewopt(
+        min_read_len=minlen, ignore_flt=ignoreflt, check_gt=gt, count_long=c, bed=b
+    )
+    gc_cmd_view(opt, input)
 
 
 @cli.command()
 @click.option(
     "-minlen", required=False, default=100, type=int, help="minimum sv length"
 )
-@click.argument("input", type=click.Path(exists=True))
-def format(minlen: int, input):
-    gc_cmd_format(minlen, input)
+@click.option("-ignoreflt", is_flag=True, help="ignore FILTER field in VCF")
+@click.option("-gt", is_flag=True, help="check GT in VCF")
+@click.option("-c", is_flag=True, help="count 20kb,100kb,1Mb and translocations")
+@click.option(
+    "-b", required=False, type=click.Path(exists=True), help="restricted bed file"
+)
+@click.argument("filter_input_gsv", type=click.File("r"), default=sys.stdin, nargs=1)
+@click.argument("output_gsv", type=click.File("r"), default=sys.stdin, nargs=1)
+def join(
+    minlen: int,
+    ignoreflt: bool,
+    gt: bool,
+    c: bool,
+    b: str,
+    filter_input_gsv,
+    output_gsv,
+):
+    """Usage: gafcall join filter.gsv out.gsv"""
+
+    h = {}
+
+    def get_type(t, col_info):
+        info = t[col_info]
+        m = re.findall(r"\bSVTYPE=([^\s;])+", info)
+
+        if len(m) > 0:
+            if m[0] == "INS" or m[0] == "DUP":
+                return 1
+            elif m[0] == "DEL":
+                return 2
+            elif m[0] == "INV":
+                return 4
+            elif m[0] == "BND" and col_info == 8 and t[0] != t[3]:
+                return 8
+        return 0
+
+    # file as filter
+    for line in filter_input_gsv:
+        t = line.strip().split()
+        if re.match(r"[><]", t[2]):
+            col_info = 8
+        else:
+            col_info = 6
+        name = t[col_info - 3]
+        if name not in h:
+            h[name] = 0
+        h[name] |= get_type(t, col_info)
+
+    # file to be filtered
+    for line in output_gsv:
+        t = line.strip().split()
+        if re.match(r"[><]", t[2]):
+            col_info = 8
+        else:
+            col_info = 6
+        name = t[col_info - 3]
+        if name not in h:
+            continue
+        type = get_type(t, col_info)
+        # NOTE: h[name] & 8 is redundant?
+        #       shall we check chromosome?
+        if type == 0 or (h[name] & type) or (h[name] & 8):
+            print(line.strip())
 
 
 @cli.command()

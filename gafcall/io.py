@@ -3,10 +3,12 @@ We could put the output interface into this submodule as well.
 """
 # import argparse
 import gzip
+import math
 import re
 from dataclasses import dataclass
+from typing import Optional
 
-from .eval import gc_parse_sv
+from .eval import gc_parse_sv, iit_index, iit_overlap, iit_sort_copy
 from .regex import re_info
 
 # from .identify_breaks_v5 import call_breakpoints
@@ -232,6 +234,9 @@ def write_vcf(opt, input):
     for line in input:
         t = line.strip().split()
         is_bp = re.match(r"[><]", t[2])
+        # cross-chrom translocation
+        if is_bp and t[0] != t[3]:
+            continue
         off_info = 8 if is_bp else 6
         type = None
         info = ""
@@ -260,9 +265,89 @@ def write_vcf(opt, input):
         )
 
 
-def gc_cmd_format(min_read_len, vcf):
-    sv = gc_parse_sv(min_read_len, vcf)
+@dataclass
+class bed:
+    st: int = -1
+    en: int = -1
+    data: Optional[str] = None
 
-    for i in range(len(sv)):
-        s = sv[i]
-        print(s.ctg, s.pos, s.ori, s.ctg2, s.pos2, s.SVTYPE, s.SVLEN, sep="\t")
+
+def gc_read_bed(fn):
+    h = {}
+    with open(fn) as input_file:
+        for line in input_file:
+            t = line.strip().split()
+            if len(t) < 3:
+                continue
+            if t[0] not in h:
+                h[t[0]] = []
+            h[t[0]].append(bed(st=int(t[1]), en=int(t[2]), data=None))
+
+    for ctg in h:
+        h[ctg] = iit_sort_copy(h[ctg])
+        iit_index(h[ctg])
+    return
+
+
+def parseNum(s):
+    regex = re.compile(r"^(\d*\.?\d*)([mMgGkK]?)")
+    m = regex.findall(s)
+    m = m[0]
+    x = float(m[0])
+    if m[1] == "k" or m[1] == "K":
+        x = x * 1000
+    elif m[1] == "m" or m[1] == "M":
+        x = x * 1e6
+    elif m[1] == "g" or m[1] == "G":
+        x = x * 1e9
+    return math.floor(x + 0.499)
+
+
+def gc_cmd_view(opt, input):
+    # Multiple input vcf evaluation
+    bed = None
+    if opt.bed is not None:
+        bed = gc_read_bed(opt.bed)
+
+    for j in range(len(input)):
+        sv = gc_parse_sv(
+            parseNum(str(opt.min_read_len)), input[j], opt.ignore_flt, opt.check_gt
+        )
+        cnt = [0, 0, 0, 0]
+        for i in range(len(sv)):
+            s = sv[i]
+            if bed is not None:
+                if s.ctg not in bed or s.ctg2 not in bed:
+                    continue
+                if len(iit_overlap(bed[s.ctg], s.pos, s.pos + 1)) == 0:
+                    continue
+                if len(iit_overlap(bed[s.ctg2], s.pos2, s.pos2 + 1)) == 0:
+                    continue
+
+            if opt.count_long:
+                if s.ctg != s.ctg2:
+                    cnt[0] += 1
+                    cnt[1] += 1
+                    cnt[2] += 1
+                    cnt[3] += 1
+                else:
+                    length = abs(s.SVLEN)
+                    if length >= 1e6:
+                        cnt[1] += 1
+                    if length >= 1e5:
+                        cnt[2] += 1
+                    if length >= 20e3:
+                        cnt[3] += 1
+            else:
+                print(
+                    s.ctg,
+                    s.pos,
+                    s.ori,
+                    s.ctg2,
+                    s.pos2,
+                    s.SVTYPE,
+                    int(s.SVLEN),
+                    sep="\t",
+                )
+        if opt.count_long:
+            print("\t".join(map(str, cnt)), input[j])

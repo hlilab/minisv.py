@@ -36,6 +36,7 @@ class svinfo:
     polyA_len: Optional[int] = None
     sv_region: Optional[str] = None
     name: Optional[str] = None
+    vaf: Optional[float] = None
 
 
 @dataclass

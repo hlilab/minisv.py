@@ -6,7 +6,7 @@ from typing import Optional
 from .merge import svinfo
 
 
-def eval(base, test, opt):
+def eval(inputfiles, opt):
     """Evaluate the performance of the test SVs against the base SVs
     Args:
         base: list of base SVs
@@ -18,18 +18,40 @@ def eval(base, test, opt):
 
     min_read_len = math.floor(opt.min_len * opt.read_len_ratio + 0.499)
 
-    base = gc_parse_sv(min_read_len, base)
-    test = gc_parse_sv(min_read_len, test)
+    if len(inputfiles) == 2:
+        # base: truthset
+        base = gc_parse_sv(min_read_len, inputfiles[0], opt.ignore_flt, opt.check_gt)
+        # compared vcf
+        test = gc_parse_sv(min_read_len, inputfiles[1], opt.ignore_flt, opt.check_gt)
 
-    tot_fn, fn = gc_cmp_sv(opt, test, base, "FN")
-    tot_fp, fp = gc_cmp_sv(opt, base, test, "FP")
-    print("RN", tot_fn, fn, round(fn / tot_fn, 4), sep="\t")
-    print("RP", tot_fp, fp, round(fp / tot_fp, 4), sep="\t")
+        tot_fn, fn = gc_cmp_sv(opt, test, base, "FN")
+        tot_fp, fp = gc_cmp_sv(opt, base, test, "FP")
+        print("RN", tot_fn, fn, round(fn / tot_fn, 4), sep="\t")
+        print("RP", tot_fp, fp, round(fp / tot_fp, 4), sep="\t")
+    else:
+        # multi-sample mode
+        vcf = []
+        for i in range(len(inputfiles)):
+            vcf.append(
+                gc_parse_sv(min_read_len, inputfiles[i], opt.ignore_flt, opt.check_gt)
+            )
+
+        for i in range(len(inputfiles)):
+            # NOTE: what is this SN?
+            a = ["SN"]
+            for j in range(len(inputfiles)):
+                cnt, err = gc_cmp_sv(opt, vcf[i], vcf[j], "XX")
+                if i != j:
+                    a.append(round(1 - err / cnt, 4))
+                else:
+                    a.append(cnt)
+            print("\t".join(a), inputfiles[i])
 
 
-def gc_parse_sv(min_read_len, file_path):
+def gc_parse_sv(min_read_len, file_path, ignore_flt: bool, check_gt: bool):
     sv = []
     ignore_id = {}
+
     with open(file_path) as f:
         for line in f:
             if line[0] == "#":
@@ -67,7 +89,7 @@ def gc_parse_sv(min_read_len, file_path):
                 svtype = m[0]
             m = re.findall(r"SVLEN=([^\s;]+)", info)
             if len(m) > 0:
-                svlen = int(m[0])
+                svlen = float(m[0])
 
             # BED line
             if type == 2:
@@ -112,7 +134,12 @@ def gc_parse_sv(min_read_len, file_path):
             elif type == 1:
                 # VCF line
                 # VCF filter
-                if t[6] != "PASS" and t[6] != ".":
+                # ignore filtered calls
+                if (not ignore_flt) and t[6] != "PASS" and t[6] != ".":
+                    continue
+
+                # not a variant
+                if check_gt and len(t) >= 9 and re.match(r"^0[\/\|]0", t[9]):
                     continue
 
                 # reference allele
@@ -123,11 +150,14 @@ def gc_parse_sv(min_read_len, file_path):
                 s = svinfo(ctg=t[0], pos=t[1] - 1, ctg2=t[0], pos2=en, ori=">>", vaf=1)
                 # indel
 
+                # NOTE: this is compatible with severus
+                #       severus VCF not in info column? t[9] should be right
+                #       sniffles use AF in info column
                 m = re.findall(r"\bVAF=([^\s;]+)", info)
                 if len(m) > 0:
                     s.vaf = float(m[0])
 
-                if re.match(r"^[A-Z,]+$", t[4]):
+                if re.match(r"^[A-Z,\*]+$", t[4]):
                     # assume full allele sequence; override SVTYPE/SVLEN even if present
                     # multiple allele
                     alt = t[4].split(",")
@@ -150,7 +180,7 @@ def gc_parse_sv(min_read_len, file_path):
                                     ori=">>",
                                     SVTYPE="DEL",
                                     SVLEN=length,
-                                    var=s.vaf,
+                                    vaf=s.vaf,
                                 )
                             )
                         else:
@@ -164,7 +194,7 @@ def gc_parse_sv(min_read_len, file_path):
                                     ori=">>",
                                     SVTYPE="INS",
                                     SVLEN=length,
-                                    var=s.vaf,
+                                    vaf=s.vaf,
                                 )
                             )
                 else:
@@ -174,13 +204,15 @@ def gc_parse_sv(min_read_len, file_path):
                             continue
                         ignore_id[t[2]] = 1
 
-                    m = re.findall(r"\bMATEID=(\d+)", info)
+                    # NOTE: \b is not correct,
+                    #       need to be ;
+                    m = re.findall(r"\b(MATE_ID|MATEID)=([^\s;]+)", info)
                     if len(m) > 0:
-                        ignore_id[m[0]] = 1
+                        ignore_id[m[1]] = 1
 
                     if svtype is None:
                         # we don't infer SVTYPE from breakpoint for existing data
-                        raise Exception("cannot determine SVTYPE")
+                        raise Exception(f"cannot determine SVTYPE {t}")
 
                     s.SVTYPE = svtype
 
@@ -188,15 +220,16 @@ def gc_parse_sv(min_read_len, file_path):
                     if svtype != "BND" and abs(svlen) < min_read_len:
                         continue  # too short
 
-                    # ENCODE Deletion SVLEN consistently
+                    # correct Deletion SVLEN consistently
                     if svtype == "DEL" and svlen > 0:
                         svlen = -svlen
 
                     s.SVLEN = svlen
 
+                    # NOTE: \b not right, use ;
                     m = re.findall(r"\bEND=(\d+)", info)
                     if len(m) > 0:
-                        s.pos2 = int(m[0])  # NOTE: - 1
+                        s.pos2 = int(m[0])
                     elif rlen == 1:
                         # ignore one-sided breakpoint
                         # NOTE: how this ignore one-sided breakpoint?
@@ -288,6 +321,7 @@ def gc_cmp_sv(opt, base, test, label):
         if t.SVTYPE == "BND" and t.ctg == t.ctg2 and abs(t.SVLEN) < opt.min_len:
             continue
 
+        # filter by VAF
         if t.vaf is not None and t.vaf < opt.min_vaf:
             continue
 
@@ -432,11 +466,11 @@ def iit_overlap(a, st, en):
 
 def same_sv1(opt, b, t):
     # check type
-    if b.SVTYPE != t.SVTYPE:
+    if b.SVTYPE != t.SVTYPE:  # type mismatch
         if (
             (not (b.SVTYPE == "DUP" and t.SVTYPE == "INS"))
             and (not (b.SVTYPE == "INS" and t.SVTYPE == "DUP"))
-            and b.SVTYPE != "BND"
+            and b.SVTYPE != "BND"  # NOTE: because some tools cannot type correctly?
             and t.SVTYPE != "BND"
         ):  # special case for INS vs DUP
             return False

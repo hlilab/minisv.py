@@ -11,7 +11,7 @@ from .eval import gc_read_bed
 
 ##from .cygafcall import GafParser as cy_GafParser
 from .gafcall import GafParser
-from .io import gc_cmd_view, merge_indel_breakpoints, write_vcf
+from .io import gc_cmd_view, merge_indel_breakpoints, parseNum, write_vcf
 
 __version__ = "0.1"
 
@@ -167,7 +167,7 @@ def getsv(
     help="minimum mapping quality in the end",
 )
 @click.option(
-    "-l", "--svlen", required=False, default=100, type=int, help="minimum sv length"
+    "-l", "--svlen", required=False, default="100", type=str, help="minimum sv length"
 )
 @click.option(
     "-f", required=False, default=0.7, type=float, help="min fraction of reads"
@@ -197,7 +197,7 @@ def getsv(
 def sv(
     q: int,
     x: int,
-    svlen: int,
+    svlen: str,
     d: bool,
     f: float,
     c: int,
@@ -213,7 +213,7 @@ def sv(
     options = opt(
         min_mapq=q,
         min_mapq_end=x,
-        min_len=svlen,
+        min_len=parseNum(svlen),
         dbg=d,
         min_frac=f,
         max_cnt_10k=c,
@@ -266,11 +266,15 @@ def sv(
     help="compare up to INT reads per allele",
 )
 @click.option(
-    "-e", required=False, default=5e5, type=float, help="minimum distance to centromere"
+    "-e",
+    required=False,
+    default="500k",
+    type=str,
+    help="minimum distance to centromere",
 )  # NOTE: in mgutils, this is forced to be int
 @click.argument("input", type=click.File("r"), default=sys.stdin)
 def merge(
-    w: int, d: float, c: int, s: int, r: int, rr: int, a: int, cc: int, e: float, input
+    w: int, d: float, c: int, s: int, r: int, rr: int, a: int, cc: int, e: str, input
 ):
     """Usage: sort -k 1,1 -k2,2n sv.bed | gafcall merge [options] -"""
     from .merge import merge_sv
@@ -280,7 +284,7 @@ def merge(
         max_diff=d,
         min_cnt=c,
         min_cnt_rt=rr,
-        min_cen_dist=e,
+        min_cen_dist=parseNum(e),
         min_rt_len=r,
         min_cnt_strand=s,
         max_allele=a,
@@ -290,8 +294,10 @@ def merge(
 
 
 @cli.command()
-@click.option("-w", required=False, default=500, type=int, help="window size")
-@click.option("-svlen", required=False, default=100, type=int, help="sv minimum length")
+@click.option("-w", required=False, default="500", type=str, help="window size")
+@click.option(
+    "-svlen", required=False, default="100", type=str, help="sv minimum length"
+)
 @click.option(
     "-v", required=False, default=0, type=float, help="ignore VAF below FLOAT"
 )
@@ -315,12 +321,10 @@ def merge(
 @click.option("-e", is_flag=True, help="print errors")
 @click.option("-g", is_flag=True, help="check GT")
 @click.option("-f", is_flag=True, help="ignore VCF filter")
-# @click.argument("base", type=click.Path(exists=True))
-# @click.argument("compare", type=click.Path(exists=True))
 @click.argument("filename", nargs=-1)
 def eval(
-    w: int,
-    svlen: float,
+    w: str,
+    svlen: str,
     c: int,
     r: float,
     lenratio: float,
@@ -336,8 +340,8 @@ def eval(
     from .eval import eval
 
     options = EvalOpt(
-        min_len=svlen,
-        win_size=w,
+        min_len=parseNum(svlen),
+        win_size=parseNum(w),
         read_len_ratio=r,
         min_len_ratio=lenratio,  # NOTE: the option are not input
         dbg=d,

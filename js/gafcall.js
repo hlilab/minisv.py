@@ -289,7 +289,7 @@ function gc_cmd_extract(args) {
 		for (let j = 0; j < z.length; ++j) {
 			const y = z[j];
 			if (y.qen - y.qst < y.qlen * opt.min_frac) continue; // ignore short alignments
-			const is_rev = (y.stand === "-");
+			const is_rev = (y.strand === "-");
 			let m, a = [], x = y.tst, q = 0;
 			while ((m = re.exec(y.cg)) != null) { // collect the list of long indels
 				const op = m[2], len = parseInt(m[1]);

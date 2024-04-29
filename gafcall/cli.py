@@ -345,7 +345,7 @@ def eval(
         read_len_ratio=r,
         min_len_ratio=lenratio,  # NOTE: the option are not input
         dbg=d,
-        bed=gc_read_bed(b),
+        bed=gc_read_bed(b) if b is not None else None,
         print_err=e,
         min_vaf=v,
         check_gt=g,

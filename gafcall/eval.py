@@ -248,20 +248,24 @@ def gc_parse_sv(min_read_len, file_path, ignore_flt: bool, check_gt: bool):
                     # t]p]: reverse comp piece extending left of p is joined after t
                     m3 = re.findall(r"^[A-Z]+\]([^\s:]+):(\d+)\]$", t[4])
                     if len(m) > 0:
+                        m = m[0]
                         s.ctg2 = m[0]
                         s.pos2 = int(m[1])
                         s.ori = ">>"
                     elif len(m1) > 0:
-                        s.ctg2 = m[0]
-                        s.pos2 = int(m[1])
+                        m1 = m1[0]
+                        s.ctg2 = m1[0]
+                        s.pos2 = int(m1[1])
                         s.ori = "<<"
                     elif len(m2) > 0:
-                        s.ctg2 = m[0]
-                        s.pos2 = int(m[1])
+                        m2 = m2[0]
+                        s.ctg2 = m2[0]
+                        s.pos2 = int(m2[1])
                         s.ori = "<>"
                     elif len(m3) > 0:
-                        s.ctg2 = m[0]
-                        s.pos2 = int(m[1])
+                        m3 = m3[0]
+                        s.ctg2 = m3[0]
+                        s.pos2 = int(m3[1])
                         s.ori = "><"
 
                     if svtype != "BND" and s.ctg != s.ctg2:

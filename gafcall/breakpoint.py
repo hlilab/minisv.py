@@ -87,6 +87,7 @@ def get_breakpoint(opt, z):
                 cen_str += f";cen_overlap={ov}"
 
         # NOTE: do we have long inserted L1 from breakpoints?
+        #
         print(
             c0.ctg,
             c0.pos,
@@ -96,7 +97,8 @@ def get_breakpoint(opt, z):
             y0.qname,
             y0.mapq if y0.mapq < y1.mapq else y1.mapq,
             strand2,
-            f"{sv_info.str};qgap={qgap};mapq={y0.mapq},{y1.mapq};aln_len={y0.qen-y0.qst},{y1.qen-y1.qst}{cen_str};source={opt.name}",
+            # NOTE: y0.qen for the qoff, do we need is_rev to pick between y0.qen and y0.qst?
+            f"{sv_info.str};qoff={y0.qen};qgap={qgap};mapq={y0.mapq},{y1.mapq};aln_len={y0.qen-y0.qst},{y1.qen-y1.qst}{cen_str};source={opt.name}",
             sep="\t",
         )
     return None

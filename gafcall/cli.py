@@ -193,7 +193,7 @@ def getsv(
 @click.option(
     "-b", required=False, type=click.Path(exists=True), help="centromere bed file"
 )
-@click.argument("filename", nargs=-1)
+@click.argument("filename", nargs=1)
 def sv(
     q: int,
     x: int,
@@ -233,7 +233,7 @@ def sv(
                 options.cen[t[0]].append([int(t[1]), int(t[2])])
             for ctg in options.cen:
                 options.cen[ctg].sort(key=lambda x: x[0])
-    load_reads(filename[0], options)
+    load_reads(filename, options)
 
 
 @cli.command()
@@ -272,7 +272,7 @@ def sv(
     type=str,
     help="minimum distance to centromere",
 )  # NOTE: in mgutils, this is forced to be int
-@click.argument("input", type=click.File("r"), default=sys.stdin)
+@click.argument("input", type=click.File("r"), required=True, nargs=1)
 def merge(
     w: int, d: float, c: int, s: int, r: int, rr: int, a: int, cc: int, e: str, input
 ):
@@ -446,6 +446,7 @@ def join(
         type = get_type(t, col_info)
         # NOTE: h[name] & 8 is redundant?
         #       shall we check chromosome?
+        # TODO: add read query positions
         if type == 0 or (h[name] & type) or (h[name] & 8):
             print(line.strip())
 

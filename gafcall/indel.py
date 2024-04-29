@@ -22,6 +22,8 @@ class indel_coord:
     str: int = 0
     enr: int = 0
 
+    qoff: int = 0
+
 
 @dataclass
 class path_segment:
@@ -89,9 +91,12 @@ def get_indel(opt, z):
         if y.qen - y.qst < y.qlen * opt.min_frac:
             continue
 
+        is_rev = y.strand == "-"
+
         cg_segs = cigar_pattern.findall(y.cg)
         # record cigar indels
         x = y.tst
+        q = 0
         a = []
         for length, op in cg_segs:
             length = int(length)
@@ -109,7 +114,8 @@ def get_indel(opt, z):
                             tsd_seq=".",
                             polyA_len=0,
                             int_seq=".",
-                        )
+                            qoff=y.qlen - (q + length) if is_rev else q,
+                        )  # NOTE: difference of reverse q_off between ins and del?
                     )
                 elif op == "D":
                     a.append(
@@ -122,10 +128,14 @@ def get_indel(opt, z):
                             tsd_seq=".",
                             polyA_len=0,
                             int_seq=".",
+                            qoff=y.qlen - q if is_rev else q,
                         )
                     )
-            if op in ["M", "D", "=", "X"]:
+            if op in ["M", "D", "=", "X", "N"]:
                 x += length
+            # NOTE: no "N" in query offset?
+            if op in ["M", "=", "X", "I", "S", "H"]:
+                q += length
 
         # No indel cigar or too many
         # per 10k alleles cannot be too many
@@ -295,7 +305,7 @@ def get_indel(opt, z):
                 strand = "-" if strand == "+" else "+"
 
             info1 = ("SVTYPE=INS" if a[i].len > 0 else "SVTYPE=DEL") + (
-                f";SVLEN={a[i].len};tsd_len={a[i].tsd_len};polyA_len={a[i].polyA_len}"
+                f";SVLEN={a[i].len};qoff={a[i].qoff};tsd_len={a[i].tsd_len};polyA_len={a[i].polyA_len}"
             )
             info2 = f"source={opt.name};tsd_seq={a[i].tsd_seq if len(a[i].tsd_seq)>0 else '.'};insert={a[i].int_seq if len(a[i].int_seq)>0 else '.'}"
 

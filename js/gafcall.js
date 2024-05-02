@@ -1,6 +1,6 @@
 #!/usr/bin/env k8
 
-const gc_version = "r114";
+const gc_version = "r115";
 
 /**************
  * From k8.js *
@@ -294,10 +294,13 @@ function gc_cmd_extract(args) {
 			while ((m = re.exec(y.cg)) != null) { // collect the list of long indels
 				const op = m[2], len = parseInt(m[1]);
 				if (len >= opt.min_len) {
-					if (op === "I")
-						a.push({ st:x, en:x,     len:len,  indel_seq:".", tsd_len:0, tsd_seq:".", polyA_len:0, int_seq:".", qoff:is_rev? y.qlen - (q + len) : q });
-					else if (op === "D")
-						a.push({ st:x, en:x+len, len:-len, indel_seq:".", tsd_len:0, tsd_seq:".", polyA_len:0, int_seq:".", qoff:is_rev? y.qlen - q : q });
+					if (op === "I") {
+						const qoff = is_rev? y.qlen - (q + len) : q;
+						a.push({ st:x, en:x,     len:len,  indel_seq:".", tsd_len:0, tsd_seq:".", polyA_len:0, int_seq:".", qoff:qoff, qoff_l:qoff, qoff_r:qoff+len });
+					} else if (op === "D") {
+						const qoff = is_rev? y.qlen - q : q;
+						a.push({ st:x, en:x+len, len:-len, indel_seq:".", tsd_len:0, tsd_seq:".", polyA_len:0, int_seq:".", qoff:qoff, qoff_l:qoff, qoff_r:qoff });
+					}
 				}
 				if (op == "M" || op == "=" || op == "X" || op == "D" || op === "N")
 					x += len;
@@ -348,6 +351,8 @@ function gc_cmd_extract(args) {
 					a[i].enl = a[i].en - rlen;
 					a[i].str = a[i].st + llen;
 					a[i].enr = a[i].en + llen;
+					a[i].qoff_l -= rlen;
+					a[i].qoff_r += llen;
 				}
 			} // ~if(y.ds)
 			if (opt.dbg) print('X0', line);
@@ -385,7 +390,7 @@ function gc_cmd_extract(args) {
 					st = enr[i].pos, en = str[i].pos;
 					strand = y.strand === "+"? "-" : "+";
 				}
-				let info1 = (a[i].len > 0? "SVTYPE=INS" : "SVTYPE=DEL") + `;SVLEN=${a[i].len};qoff=${a[i].qoff};tsd_len=${a[i].tsd_len};polyA_len=${a[i].polyA_len}`;
+				let info1 = (a[i].len > 0? "SVTYPE=INS" : "SVTYPE=DEL") + `;SVLEN=${a[i].len};qoff_l=${a[i].qoff_l};qoff_r=${a[i].qoff_r};tsd_len=${a[i].tsd_len};polyA_len=${a[i].polyA_len}`;
 				const info2 = `source=${opt.name};tsd_seq=${a[i].tsd_seq.length>0?a[i].tsd_seq:"."};insert=${a[i].int_seq.length>0?a[i].int_seq:"."}`;
 				if (opt.cen[s.ctg] != null) {
 					const dist_st = cal_cen_dist(opt, s.ctg, st);
@@ -502,8 +507,10 @@ function gc_cmd_extract(args) {
 					cen_str += `;cen_overlap=${ov}`;
 				}
 			}
+			const qoff_l = y0.qen < y1.qst? y0.qen : y1.qst;
+			const qoff_r = y0.qen > y1.qst? y0.qen : y1.qst;
 			print(c0.ctg, c0.pos, ori, c1.ctg, c1.pos, y0.qname, y0.mapq < y1.mapq? y0.mapq : y1.mapq, strand2,
-				  `${sv_info.str};qoff=${y0.qen};qgap=${qgap};mapq=${y0.mapq},${y1.mapq};aln_len=${y0.qen-y0.qst},${y1.qen-y1.qst}${cen_str};source=${opt.name}`);
+				  `${sv_info.str};qoff_l=${qoff_l};qoff_r=${qoff_r};qgap=${qgap};mapq=${y0.mapq},${y1.mapq};aln_len=${y0.qen-y0.qst},${y1.qen-y1.qst}${cen_str};source=${opt.name}`);
 		}
 	} // ~get_breakpoint()
 

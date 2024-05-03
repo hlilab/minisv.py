@@ -1,6 +1,6 @@
 #!/usr/bin/env k8
 
-const gc_version = "r115";
+const gc_version = "r116";
 
 /**************
  * From k8.js *
@@ -295,10 +295,10 @@ function gc_cmd_extract(args) {
 				const op = m[2], len = parseInt(m[1]);
 				if (len >= opt.min_len) {
 					if (op === "I") {
-						const qoff = is_rev? y.qlen - (q + len) : q;
+						const qoff = is_rev? y.qen - (q + len) : q + y.qst;
 						a.push({ st:x, en:x,     len:len,  indel_seq:".", tsd_len:0, tsd_seq:".", polyA_len:0, int_seq:".", qoff:qoff, qoff_l:qoff, qoff_r:qoff+len });
 					} else if (op === "D") {
-						const qoff = is_rev? y.qlen - q : q;
+						const qoff = is_rev? y.qen - q : q + y.qst;
 						a.push({ st:x, en:x+len, len:-len, indel_seq:".", tsd_len:0, tsd_seq:".", polyA_len:0, int_seq:".", qoff:qoff, qoff_l:qoff, qoff_r:qoff });
 					}
 				}
@@ -351,8 +351,13 @@ function gc_cmd_extract(args) {
 					a[i].enl = a[i].en - rlen;
 					a[i].str = a[i].st + llen;
 					a[i].enr = a[i].en + llen;
-					a[i].qoff_l -= rlen;
-					a[i].qoff_r += llen;
+					if (is_rev) {
+						a[i].qoff_l -= llen;
+						a[i].qoff_r += rlen;
+					} else {
+						a[i].qoff_l -= rlen;
+						a[i].qoff_r += llen;
+					}
 				}
 			} // ~if(y.ds)
 			if (opt.dbg) print('X0', line);
@@ -1088,6 +1093,66 @@ function gc_cmd_join(args) {
 	}
 }
 
+function gc_cmd_join2(args) {
+	let opt = { win_size:1000 };
+	for (const o of getopt(args, "w:")) {
+		if (o.opt === "-w") opt.win_size = parseNum(o.arg);
+	}
+	if (args.length < 2) {
+		print("Usgae: gafcall.js join [options] <filter.gsv> <out.gsv>");
+		print("Options:");
+		print(`  -w NUM     fuzzy window size [${opt.win_size}]`);
+		return;
+	}
+
+	function get_type(t, col_info) {
+		const info = t[col_info];
+		const re = /\b(SVTYPE|SVLEN|qoff_l|qoff_r)=([^\s;]+)/g
+		let m, type = null, qoff_l = -1, qoff_r = -1, len = 0, flag = 0;
+		while ((m = re.exec(info)) != null) {
+			if (m[1] === "SVTYPE") type = m[2];
+			else if (m[1] === "SVLEN") len = parseInt(m[2]);
+			else if (m[1] === "qoff_l") qoff_l = parseInt(m[2]);
+			else if (m[1] === "qoff_r") qoff_r = parseInt(m[2]);
+		}
+		if (type == null || qoff_l < 0 || qoff_r < 0) {
+			warn(type, qoff_l, qoff_r);
+			throw Error("missing information");
+		}
+		if (type === "INS" || type === "DUP") flag = 1; // insertion
+		else if (type === "DEL") flag = 2; // deletion
+		else if (type === "INV") flag = 4; // inversion
+		else if (type === "BND" && col_info === 8 && t[0] !== t[3]) flag = 8; // translocation
+		return { type:type, len:len, st:qoff_l, en:qoff_r, flag:flag };
+	}
+
+	let h = {}
+	for (const line of k8_readline(args[0])) {
+		let t = line.split("\t");
+		const col_info = /^[><]+$/.test(t[2])? 8 : 6;
+		const name = t[col_info - 3];
+		if (h[name] == null) h[name] = [];
+		h[name].push(get_type(t, col_info));
+	}
+	for (const line of k8_readline(args[1])) {
+		let t = line.split("\t");
+		const col_info = /^[><]+$/.test(t[2])? 8 : 6;
+		const name = t[col_info - 3];
+		if (h[name] == null) continue;
+		const a = h[name];
+		const x = get_type(t, col_info);
+		let found = false;
+		for (let i = 0; i < a.length; ++i) {
+			if (x.st - opt.win_size < a[i].en && a[i].st < x.en + opt.win_size) { // overlap
+				if (x.flag === 0 || (x.flag & a[i].flag) || (a[i].flag & 8)) {
+					found = true;
+				}
+			}
+		}
+		if (found) print(line);
+	}
+}
+
 /*******************************
  * Convert to VCF (unfinished) *
  *******************************/
@@ -1156,6 +1221,7 @@ function main(args)
 	else if (cmd === "eval") gc_cmd_eval(args);
 	else if (cmd === "view" || cmd === "format") gc_cmd_view(args);
 	else if (cmd === "join") gc_cmd_join(args);
+	else if (cmd === "join2") gc_cmd_join2(args);
 	else if (cmd === "version") {
 		print(gc_version);
 		return;

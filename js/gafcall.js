@@ -1,6 +1,6 @@
 #!/usr/bin/env k8
 
-const gc_version = "r116";
+const gc_version = "r119";
 
 /**************
  * From k8.js *
@@ -1055,45 +1055,6 @@ function gc_cmd_eval(args) {
  **********************/
 
 function gc_cmd_join(args) {
-	for (const o of getopt(args, "")) {
-	}
-	if (args.length < 2) {
-		print("Usgae: gafcall.js join <filter.gsv> <out.gsv>");
-		return;
-	}
-
-	function get_type(t, col_info) {
-		const info = t[col_info];
-		let m;
-		if ((m = /\bSVTYPE=([^\s;]+)/.exec(info)) != null) {
-			if (m[1] === "INS" || m[1] === "DUP") return 1;
-			else if (m[1] === "DEL") return 2;
-			else if (m[1] === "INV") return 4;
-			else if (m[1] === "BND" && col_info === 8 && t[0] !== t[3]) return 8;
-		}
-		return 0;
-	}
-
-	let h = {}
-	for (const line of k8_readline(args[0])) {
-		let t = line.split("\t");
-		const col_info = /^[><]+$/.test(t[2])? 8 : 6;
-		const name = t[col_info - 3];
-		if (h[name] == null) h[name] = 0;
-		h[name] |= get_type(t, col_info);
-	}
-	for (const line of k8_readline(args[1])) {
-		let t = line.split("\t");
-		const col_info = /^[><]+$/.test(t[2])? 8 : 6;
-		const name = t[col_info - 3];
-		if (h[name] == null) continue;
-		const type = get_type(t, col_info);
-		if (type === 0 || (h[name]&type) || (h[name]&8))
-			print(line);
-	}
-}
-
-function gc_cmd_join2(args) {
 	let opt = { win_size:1000 };
 	for (const o of getopt(args, "w:")) {
 		if (o.opt === "-w") opt.win_size = parseNum(o.arg);
@@ -1221,7 +1182,6 @@ function main(args)
 	else if (cmd === "eval") gc_cmd_eval(args);
 	else if (cmd === "view" || cmd === "format") gc_cmd_view(args);
 	else if (cmd === "join") gc_cmd_join(args);
-	else if (cmd === "join2") gc_cmd_join2(args);
 	else if (cmd === "version") {
 		print(gc_version);
 		return;

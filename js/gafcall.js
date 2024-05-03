@@ -1,6 +1,6 @@
 #!/usr/bin/env k8
 
-const gc_version = "r119";
+const gc_version = "r120";
 
 /**************
  * From k8.js *
@@ -893,7 +893,7 @@ function gc_cmd_view(args) {
 	}
 	for (let j = 0; j < args.length; ++j) {
 		const sv = gc_parse_sv(min_read_len, args[j], ignore_flt, check_gt);
-		let cnt = [ 0, 0, 0, 0 ];
+		let cnt = [ 0, 0, 0, 0, 0 ];
 		for (let i = 0; i < sv.length; ++i) {
 			const s = sv[i];
 			if (bed != null) {
@@ -910,6 +910,7 @@ function gc_cmd_view(args) {
 					if (len >= 100000) ++cnt[2];
 					if (len >= 20000) ++cnt[3];
 				}
+				++cnt[4];
 			} else {
 				print(s.ctg, s.pos, s.ori, s.ctg2, s.pos2, s.svtype, s.svlen);
 			}
@@ -1114,6 +1115,34 @@ function gc_cmd_join(args) {
 	}
 }
 
+function gc_cmd_snfpair(args) {
+	let opt = { normal:2, tumor:1 };
+	for (const o of getopt(args, "n:t:")) {
+		if (o.opt === "-n") opt.normal = parseInt(o.arg);
+		else if (o.opt === "-t") opt.tumor = parseInt(o.arg);
+	}
+	if (args.length == 0) {
+		print("Usage: gafcall.js snfpair [-n INT] [-t INT] <sniffles-multi.vcf>");
+		return;
+	}
+	for (const line of k8_readline(args[0])) {
+		if (line[0] === "#") {
+			print(line);
+		} else {
+			let t = line.split("\t");
+			let sn = t[8+opt.normal].split(":");
+			let st = t[8+opt.tumor].split(":");
+			let fmt = t[8].split(":");
+			for (let i = 0; i < fmt.length; ++i) {
+				if (fmt[i] === "DV" && parseInt(sn[i]) == 0 && parseInt(st[i]) > 0) {
+					print(line);
+					continue;
+				}
+			}
+		}
+	}
+}
+
 /*******************************
  * Convert to VCF (unfinished) *
  *******************************/
@@ -1182,6 +1211,7 @@ function main(args)
 	else if (cmd === "eval") gc_cmd_eval(args);
 	else if (cmd === "view" || cmd === "format") gc_cmd_view(args);
 	else if (cmd === "join") gc_cmd_join(args);
+	else if (cmd === "snfpair") gc_cmd_snfpair(args);
 	else if (cmd === "version") {
 		print(gc_version);
 		return;

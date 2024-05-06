@@ -476,7 +476,7 @@ def vcf(input):
 
 @cli.command()
 @click.argument("input", type=click.File("r"), default=sys.stdin)
-def mgutilvcf(input):
+def formatvcf(input):
     options = None
     write_vcf(options, input)
 

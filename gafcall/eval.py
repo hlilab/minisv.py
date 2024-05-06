@@ -26,8 +26,8 @@ def eval(inputfiles, opt):
 
         tot_fn, fn = gc_cmp_sv(opt, test, base, "FN")
         tot_fp, fp = gc_cmp_sv(opt, base, test, "FP")
-        print("RN", tot_fn, fn, round(fn / tot_fn, 4), sep="\t")
-        print("RP", tot_fp, fp, round(fp / tot_fp, 4), sep="\t")
+        print("RN", tot_fn, fn, round(fn / tot_fn, 4), inputfiles[0], sep="\t")
+        print("RP", tot_fp, fp, round(fp / tot_fp, 4), inputfiles[1], sep="\t")
     else:
         # multi-sample mode
         vcf = []
@@ -541,7 +541,7 @@ def gc_read_bed(fn):
                 continue
             if t[0] not in h:
                 h[t[0]] = []
-            h[t[0]].append(iit_obj(st=int(t[1]), en=int(t[2]), data=None))
+            h[t[0]].append({"st": int(t[1]), "en": int(t[2]), "data": None})
 
     for ctg in h:
         h[ctg] = iit_sort_copy(h[ctg])

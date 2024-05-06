@@ -224,45 +224,117 @@ def write_vcf(opt, input):
     print(
         '##INFO=<ID=END,Number=1,Type=Integer,Description="End position of the variant described in this record">'
     )
+    print('##INFO=<ID=MATEID,Number=.,Type=String,Description="ID of mate breakends">')
+    print('##INFO=<ID=SEQ,Number=1,Type=String,Description="INDEL sequence">')
     print('##ALT=<ID=DEL,Description="Deletion">')
     print('##ALT=<ID=INS,Description="Insertion">')
     print('##ALT=<ID=DUP,Description="Duplication">')
     print('##ALT=<ID=INV,Description="Inversion">')
+    print('##ALT=<ID=BND,Description="Breakend">')
     print('##FORMAT=<ID=GT,Number=1,Type=String,Description="Genotype">')
     print("#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\tFORMAT\tsample")
     key = {"SVTYPE": 1, "SVLEN": 1}
+    cnt = {}
     for line in input:
         t = line.strip().split()
         is_bp = re.match(r"[><]", t[2])
         # cross-chrom translocation
-        if is_bp and t[0] != t[3]:
-            continue
+        t[1] = int(t[1])
+        if is_bp:
+            t[4] = int(t[4])
+        else:
+            t[2] = int(t[2])
         off_info = 8 if is_bp else 6
         type = None
-        info = ""
+        tsd_seq = None
+        insert = None
+        info = []
         for m in re_info.findall(t[off_info]):
             if m[0] in key:
-                if len(info) > 0:
-                    info += ";"
-                info += f"{m[0]}={m[1]}"
+                info.append(f"{m[0]}={m[1]}")
+            elif m[0] == "tsd_seq":
+                tsd_seq = m[1]
+            elif m[0] == "insert":
+                insert = m[1]
             if m[0] == "SVTYPE":
                 type = m[1]
-        if type is None or type == "BND":
-            continue
-        info += f";END={t[4]}" if is_bp else f";END={t[2]}"
-        print(
-            t[0],
-            t[1],
-            ".",
-            "N",
-            f"<{type}>",
-            t[off_info - 2],
-            ".",
-            info,
-            "GT",
-            "1/1",
-            sep="\t",
-        )
+
+        info.append(f"END={t[4]}" if is_bp else f"END={t[2]}")
+
+        if type not in cnt:
+            cnt[type] = 0
+
+        cnt[type] += 1
+
+        if tsd_seq is not None and insert is not None:
+            # NOTE: if revere strand, shall we use {insert}{tsd_seq}
+            info.append(f"SEQ={insert}" if tsd_seq == "." else f"SEQ={tsd_seq}{insert}")
+
+        id0 = f"{type.lower()}_{cnt[type]}"
+        if type == "BND":
+            if not is_bp:
+                raise Exception("breakpoint has type non-BND")
+
+            bnd = None
+            coor = f"{t[3]}:{t[4]+1}"
+            if t[2] == ">>":
+                bnd = f"N[{coor}["
+            elif t[2] == "<<":
+                bnd = f"]{coor}]N"
+            elif t[2] == "><":
+                bnd = f"N]{coor}]"
+            elif t[2] == "<>":
+                bnd = f"[{coor}[N"
+            print(
+                t[0],
+                t[1] + 1,
+                f"{id0}_1",
+                "N",
+                bnd,
+                t[off_info - 2],
+                "PASS",
+                ";".join(info) + f";MATEID={id0}_2",
+                "GT",
+                "1/1",
+                sep="\t",
+            )
+
+            coor = f"{t[0]}:{t[1]+1}"
+            if t[2] == ">>":
+                bnd = f"]{coor}]N"
+            elif t[2] == "<<":
+                bnd = f"N[{coor}["
+            elif t[2] == "><":
+                bnd = f"N]{coor}]"
+            elif t[2] == "<>":
+                bnd = f"[{coor}[N"
+            print(
+                t[3],
+                t[4] + 1,
+                f"{id0}_2",
+                "N",
+                bnd,
+                t[off_info - 2],
+                "PASS",
+                ";".join(info) + f";MATEID={id0}_1",
+                "GT",
+                "1/1",
+                sep="\t",
+            )
+        else:
+            print(
+                t[0],
+                t[1] + 1,
+                id0,
+                "N",
+                f"<{type}>",
+                t[off_info - 2],
+                "PASS",
+                ";".join(info),
+                "GT",
+                "1/1",  # NOTE: we may by default use 0/1
+                sep="\t",
+            )
 
 
 @dataclass
@@ -281,7 +353,8 @@ def gc_read_bed(fn):
                 continue
             if t[0] not in h:
                 h[t[0]] = []
-            h[t[0]].append(bed(st=int(t[1]), en=int(t[2]), data=None))
+            # h[t[0]].append(bed(st=int(t[1]), en=int(t[2]), data=None))
+            h[t[0]].append({"st": int(t[1]), "en": int(t[2]), "data": None})
 
     for ctg in h:
         h[ctg] = iit_sort_copy(h[ctg])

@@ -80,9 +80,9 @@ def load_reads(input_file, opt):
                 if t[0][0] == "@":
                     continue
 
-                flag = int(t[1])
-                if flag & 0x100:
-                    continue
+                # flag = int(t[1])
+                # if flag & 0x100:
+                #    continue
 
                 # y = alignment(
                 #    qname=t[0],

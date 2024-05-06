@@ -23,6 +23,8 @@ class indel_coord:
     enr: int = 0
 
     qoff: int = 0
+    qoff_l: int = 0
+    qoff_r: int = 0
 
 
 @dataclass
@@ -103,6 +105,7 @@ def get_indel(opt, z):
             if length >= opt.min_len:
                 if op == "I":
                     # [start, end, indel length, tsd length, polyA length, tsd seq, indel seq]
+                    qoff = y.qen - (q + length) if is_rev else q + y.qst
                     a.append(
                         # NOTE: to be more accurate in indels
                         indel_coord(
@@ -114,10 +117,13 @@ def get_indel(opt, z):
                             tsd_seq=".",
                             polyA_len=0,
                             int_seq=".",
-                            qoff=y.qlen - (q + length) if is_rev else q,
+                            qoff=qoff,
+                            qoff_l=qoff,
+                            qoff_r=qoff + length,
                         )  # NOTE: difference of reverse q_off between ins and del?
                     )
                 elif op == "D":
+                    qoff = y.qen - q if is_rev else q + y.qst
                     a.append(
                         indel_coord(
                             st=x,
@@ -128,7 +134,9 @@ def get_indel(opt, z):
                             tsd_seq=".",
                             polyA_len=0,
                             int_seq=".",
-                            qoff=y.qlen - q if is_rev else q,
+                            qoff=qoff,
+                            qoff_l=qoff,
+                            qoff_r=qoff,
                         )
                     )
             if op in ["M", "D", "=", "X", "N"]:
@@ -219,6 +227,14 @@ def get_indel(opt, z):
                 a[i].str = a[i].st + llen
                 a[i].enr = a[i].en + llen
 
+                # NOTE: adjust query length offset
+                if is_rev:
+                    a[i].qoff_l = a[i].qoff_l - llen
+                    a[i].qoff_r = a[i].qoff_r + rlen
+                else:
+                    a[i].qoff_l = a[i].qoff_l - rlen
+                    a[i].qoff_r = a[i].qoff_r + llen
+
         # genome graph path reference segments
         seg = []
         # with <>: this is a path
@@ -305,7 +321,7 @@ def get_indel(opt, z):
                 strand = "-" if strand == "+" else "+"
 
             info1 = ("SVTYPE=INS" if a[i].len > 0 else "SVTYPE=DEL") + (
-                f";SVLEN={a[i].len};qoff={a[i].qoff};tsd_len={a[i].tsd_len};polyA_len={a[i].polyA_len}"
+                f";SVLEN={a[i].len};qoff_l={a[i].qoff_l};qoff_r={a[i].qoff_r};tsd_len={a[i].tsd_len};polyA_len={a[i].polyA_len}"
             )
             info2 = f"source={opt.name};tsd_seq={a[i].tsd_seq if len(a[i].tsd_seq)>0 else '.'};insert={a[i].int_seq if len(a[i].int_seq)>0 else '.'}"
 

@@ -1,6 +1,6 @@
 #!/usr/bin/env k8
 
-const gc_version = "r121";
+const gc_version = "r122";
 
 /**************
  * From k8.js *
@@ -499,8 +499,10 @@ function gc_cmd_extract(args) {
 			const y0 = zz[j-1], y1 = zz[j];
 			const qgap = y1.qst - y0.qen;
 			let c0 = y0.coor[1], c1 = y1.coor[0], strand2 = "+", ori = c0.ori + c1.ori;
-			if (!(c0.ctg < c1.ctg || (c0.ctg === c1.ctg && c0.pos < c1.pos)))
-				c0 = y1.coor[0], c1 = y0.coor[1], strand2 = "-", ori = (c1.ori === ">"? "<" : ">") + (c0.ori === ">"? "<" : ">");
+			if (!(c0.ctg < c1.ctg || (c0.ctg === c1.ctg && c0.pos < c1.pos))) {
+				ori = (c1.ori === ">"? "<" : ">") + (c0.ori === ">"? "<" : ">");
+				c0 = y1.coor[0], c1 = y0.coor[1], strand2 = "-";
+			}
 			const sv_info = infer_svtype(opt, c0, c1, ori, qgap);
 			let cen_str = "";
 			if (opt.cen[c0.ctg] != null || opt.cen[c1.ctg] != null) {

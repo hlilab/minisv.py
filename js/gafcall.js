@@ -1,6 +1,6 @@
 #!/usr/bin/env k8
 
-const gc_version = "r122";
+const gc_version = "r123";
 
 /**************
  * From k8.js *
@@ -696,13 +696,15 @@ function gc_cmd_merge(args) {
 		if (rt_len_arr.length > 0)
 			rt_len = rt_len_arr[rt_len_arr.length>>1];
 		// count
-		let mapq = 0, cnt = {}, cnt_strand = [0, 0], name = [];
+		let mapq = 0, cnt = {}, cnt_strand = [0, 0], name = [], cnt_fr = 0, cnt_rf = 0;
 		for (let i = 0; i < s.length; ++i) {
 			mapq += s[i]._mapq;
 			if (cnt[s[i].source] == null) cnt[s[i].source] = [0, 0];
 			cnt[s[i].source][s[i].strand === "+"? 0 : 1]++;
 			cnt_strand[s[i].strand === "+"? 0 : 1]++;
 			name.push(s[i].name);
+			if (s[i].ori === "><") ++cnt_fr;
+			else if (s[i].ori === "<>") ++cnt_rf;
 		}
 		mapq = (mapq / s.length).toFixed(0);
 		// filter by count
@@ -718,6 +720,8 @@ function gc_cmd_merge(args) {
 		info += `count=${cnt_arr.join("|")};`;
 		info += `rt_len=${rt_len};`;
 		info += v.info.replace(/(;?)source=[^;\s=]+/, "");
+		if (cnt_fr + cnt_rf > 0)
+			info += `;count_fr=${cnt_fr};count_rf=${cnt_rf}`;
 		info += `;reads=${name.join(",")}`;
 
 		if (!v.is_bp) {

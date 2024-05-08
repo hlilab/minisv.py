@@ -1,6 +1,6 @@
 #!/usr/bin/env k8
 
-const gc_version = "r123";
+const gc_version = "r124";
 
 /**************
  * From k8.js *
@@ -610,7 +610,7 @@ function gc_cmd_merge(args) {
 		print(`  -s INT     min read count on each strand [${opt.min_cnt_strand}]`);
 		print(`  -w INT     window size [${opt.win_size}]`);
 		print(`  -d FLOAT   max allele length difference ratio [${opt.max_diff}]`);
-		print(`  -e NUM     min distance to centromeres [${opt.min_cen_dist}]`);
+		print(`  -e NUM     min distance to centromeres (0 to disable) [${opt.min_cen_dist}]`);
 		print(`  -r INT     min min(TSD,polyA) to tag a candidate RT; 0 to disable [${opt.min_rt_len}]`);
 		print(`  -R INT     min read count for a candidate RT [${opt.min_cnt_rt}]`);
 		print(`  -A INT     check up to INT nearby alleles [${opt.max_allele}]`);
@@ -720,8 +720,11 @@ function gc_cmd_merge(args) {
 		info += `count=${cnt_arr.join("|")};`;
 		info += `rt_len=${rt_len};`;
 		info += v.info.replace(/(;?)source=[^;\s=]+/, "");
-		if (cnt_fr + cnt_rf > 0)
+		if (cnt_fr + cnt_rf > 0) {
 			info += `;count_fr=${cnt_fr};count_rf=${cnt_rf}`;
+			if (cnt_fr * cnt_rf == 0 && v.ctg === v.ctg2)
+				info += `;foldback`;
+		}
 		info += `;reads=${name.join(",")}`;
 
 		if (!v.is_bp) {

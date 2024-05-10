@@ -1,6 +1,6 @@
 #!/usr/bin/env k8
 
-const gc_version = "r125";
+const gc_version = "r126";
 
 /**************
  * From k8.js *
@@ -780,6 +780,51 @@ function gc_cmd_merge(args) {
 		write_sv(opt, sv.shift().v);
 }
 
+function gc_cmd_mergeflt(args) {
+	let opt = { min_cnt:2, min_cnt_strand:0, min_cen_dist:500000 };
+	for (const o of getopt(args, "e:c:s:")) {
+		if (o.opt === "-c") opt.min_cnt = parseInt(o.arg);
+		else if (o.opt === "-s") opt.min_cnt_strand = parseInt(o.arg);
+		else if (o.opt === "-e") opt.min_cen_dist = parseNum(o.arg);
+	}
+	if (args.length === 0) {
+		print("Usage: gafcall.js mergeflt [options] <in.gsv>");
+		print("Options:");
+		print(`  -c INT     min read count [${opt.min_cnt}]`);
+		print(`  -s INT     min read count on each strand [${opt.min_cnt_strand}]`);
+		print(`  -e NUM     min distance to centromeres (0 to disable) [${opt.min_cen_dist}]`);
+		return;
+	}
+	const re_info = /([^;\s=]+)=([^;\s=]+)/g;
+	for (const line of k8_readline(args[0])) {
+		let m, t = line.split("\t");
+		const is_bp = /^[><][><]$/.test(t[2]);
+		const col_info = is_bp? 8 : 6;
+		let cen_overlap = null, cen_dist = null, cnt = [0, 0];
+		while ((m = re_info.exec(t[col_info])) != null) {
+			if (m[1] === "count") {
+				let s = m[2].split("|");
+				for (let i = 0; i < s.length; ++i) {
+					let p;
+					if ((p = /([^\s:]+):(\d+),(\d+)/.exec(s[i])) != null)
+						cnt[0] += parseInt(p[2]), cnt[1] += parseInt(p[3]);
+				}
+			} else if (m[1] === "cen_dist") {
+				cen_dist = parseInt(m[2]);
+			} else if (m[1] === "cen_overlap") {
+				cen_overlap = parseInt(m[2]);
+			}
+		}
+		if (opt.min_cen_dist > 0) {
+			if (cen_dist != null && cen_dist <= opt.min_cen_dist) continue;
+			if (cen_overlap != null && cen_overlap > 0) continue;
+		}
+		if (cnt[0] + cnt[1] < opt.min_cnt) continue;
+		if (cnt[0] < opt.min_cnt_strand || cnt[1] < opt.min_cnt_strand) continue;
+		print(line);
+	}
+}
+
 /*************************
  * Parse and reformat SV *
  *************************/
@@ -1239,6 +1284,7 @@ function main(args)
 		print("Commands:");
 		print("  extract      extract long INDELs and breakpoints from GAF");
 		print("  merge        merge extracted INDELs and breakpoints");
+		print("  mergeflt     filter merge output");
 		print("  eval         evaluate SV calls");
 		print("  view         print in the gafcall format");
 		print("  join         join two 'extract' outputs");
@@ -1251,6 +1297,7 @@ function main(args)
 	var cmd = args.shift();
 	if (cmd === "extract" || cmd === "getsv") gc_cmd_extract(args);
 	else if (cmd === "merge" || cmd === "mergesv") gc_cmd_merge(args);
+	else if (cmd === "mergeflt") gc_cmd_mergeflt(args);
 	else if (cmd === "eval") gc_cmd_eval(args);
 	else if (cmd === "view" || cmd === "format") gc_cmd_view(args);
 	else if (cmd === "join") gc_cmd_join(args);

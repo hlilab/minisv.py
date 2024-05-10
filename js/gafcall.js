@@ -1,6 +1,6 @@
 #!/usr/bin/env k8
 
-const gc_version = "r126";
+const gc_version = "r127";
 
 /**************
  * From k8.js *
@@ -780,6 +780,18 @@ function gc_cmd_merge(args) {
 		write_sv(opt, sv.shift().v);
 }
 
+/***********************
+ * Filter merge output *
+ ***********************/
+
+function gc_get_count_gsv(info_count) {
+	let p, s = info_count.split("|"), cnt = [0, 0];
+	for (let i = 0; i < s.length; ++i)
+		if ((p = /([^\s:]+):(\d+),(\d+)/.exec(s[i])) != null)
+			cnt[0] += parseInt(p[2]), cnt[1] += parseInt(p[3]);
+	return cnt;
+}
+
 function gc_cmd_mergeflt(args) {
 	let opt = { min_cnt:2, min_cnt_strand:0, min_cen_dist:500000 };
 	for (const o of getopt(args, "e:c:s:")) {
@@ -803,12 +815,7 @@ function gc_cmd_mergeflt(args) {
 		let cen_overlap = null, cen_dist = null, cnt = [0, 0];
 		while ((m = re_info.exec(t[col_info])) != null) {
 			if (m[1] === "count") {
-				let s = m[2].split("|");
-				for (let i = 0; i < s.length; ++i) {
-					let p;
-					if ((p = /([^\s:]+):(\d+),(\d+)/.exec(s[i])) != null)
-						cnt[0] += parseInt(p[2]), cnt[1] += parseInt(p[3]);
-				}
+				cnt = gc_get_count_gsv(m[2]);
 			} else if (m[1] === "cen_dist") {
 				cen_dist = parseInt(m[2]);
 			} else if (m[1] === "cen_overlap") {
@@ -829,7 +836,30 @@ function gc_cmd_mergeflt(args) {
  * Parse and reformat SV *
  *************************/
 
-function gc_parse_sv(min_len, fn, ignore_flt, check_gt) {
+function gc_get_count_vcf(t) {
+	const re_info = /([^;\s=]+)=([^;\s=]+)/g;
+	let m;
+	while ((m = re_info.exec(t[7])) != null) {
+		if (m[1] == "SUPPORT") return parseInt(m[2]); // Sniffles2
+		else if (m[1] == "TUMOUR_SUPPORT") return parseInt(m[2]); // SAVANA
+	}
+	if (t.length >= 10 && /\bDV|VR\b/.test(t[8])) { // parse DV (Severus & Sniffles2) or VR (nanomonsv) format
+		const fmt = t[8].split(":");
+		let fmt_i = -1, n_fmt = 0;
+		for (let i = 0; i < fmt.length; ++i)
+			if (fmt[i] == "DV" || fmt[i] == "VR")
+				fmt_i = i, ++n_fmt;
+		if (n_fmt == 1 && fmt_i >= 0) {
+			let cnt = 0;
+			for (let i = 9; i < t.length; ++i)
+				cnt += parseInt(t[i].split(":")[fmt_i]);
+			return cnt;
+		}
+	}
+	return -1;
+}
+
+function gc_parse_sv(fn, min_len, min_cnt, ignore_flt, check_gt) {
 	let sv = [], ignore_id = {};
 	ignore_flt = typeof ignore_flt !== "undefined"? ignore_flt : true;
 	check_gt = typeof check_gt !== "undefined"? check_gt : false;
@@ -844,25 +874,34 @@ function gc_parse_sv(min_len, fn, ignore_flt, check_gt) {
 		else if (/;/.test(t[7])) type = 1, info = t[7]; // VCF
 		else if (/^\d+$/.test(t[2]) && /;/.test(t[6])) type = 2, info = t[6]; // BED
 		if (type == 0) continue;
-		let svtype = null, svlen = 0;
-		if ((m = /SVTYPE=([^\s;]+)/.exec(info)) != null)
+		let svtype = null, svlen = 0, cnt_tot = -1;
+		if ((m = /\bSVTYPE=([^\s;]+)/.exec(info)) != null)
 			svtype = m[1];
-		if ((m = /SVLEN=([^\s;]+)/.exec(info)) != null)
+		if ((m = /\bSVLEN=([^\s;]+)/.exec(info)) != null)
 			svlen = parseFloat(m[1]);
+		if (type == 2 || type == 3) { // get supporting read count from GSV
+			if ((m = /\bcount=([^\s;]+)/.exec(info)) != null) {
+				const [cf, cr] = gc_get_count_gsv(m[1]);
+				cnt_tot = cf + cr;
+			}
+		} else if (type == 1) { // VCF
+			cnt_tot = gc_get_count_vcf(t);
+		}
+		if (cnt_tot > 0 && cnt_tot < min_cnt) continue; // too few supporting reads
 		if (type == 2) { // BED line
 			t[2] = parseInt(t[2]);
 			if (t[1] > t[2]) throw("incorrected BED?");
 			if (Math.abs(svlen) < min_len) continue;
-			sv.push({ ctg:t[0], pos:t[1], ctg2:t[0], pos2:t[2], ori:">>", svtype:svtype, svlen:svlen, vaf:1 });
+			sv.push({ ctg:t[0], pos:t[1], ctg2:t[0], pos2:t[2], ori:">>", svtype:svtype, svlen:svlen, count:cnt_tot, vaf:1 });
 		} else if (type == 3) { // breakpoint line
 			t[4] = parseInt(t[4]);
 			if (t[0] === t[3] && Math.abs(svlen) < min_len) continue;
-			sv.push({ ctg:t[0], pos:t[1], ctg2:t[3], pos2:t[4], ori:t[2], svtype:svtype, svlen:svlen, vaf:1 });
+			sv.push({ ctg:t[0], pos:t[1], ctg2:t[3], pos2:t[4], ori:t[2], svtype:svtype, svlen:svlen, count:cnt_tot, vaf:1 });
 		} else if (type == 1) { // VCF line
 			if (!ignore_flt && t[6] !== "PASS" && t[6] !== ".") continue; // ignore filtered calls
 			if (check_gt && t.length >= 9 && /^0[\/\|]0/.test(t[9])) continue; // not a variant
 			let rlen = t[3].length, en = t[1] + rlen - 1;
-			let s = { ctg:t[0], pos:t[1]-1, ctg2:t[0], pos2:en, ori:">>", vaf:1 };
+			let s = { ctg:t[0], pos:t[1]-1, ctg2:t[0], pos2:en, ori:">>", count:cnt_tot, vaf:1 };
 			if ((m = /\bVAF=([^\s;]+)/.exec(info)) != null)
 				s.vaf = parseFloat(m[1]);
 			if (/^[A-Z,\*]+$/.test(t[4])) { // assume full allele sequence; override SVTYPE/SVLEN even if present
@@ -870,10 +909,8 @@ function gc_parse_sv(min_len, fn, ignore_flt, check_gt) {
 				for (let i = 0; i < alt.length; ++i) {
 					const a = alt[i], len = a.length - rlen;
 					if (Math.abs(len) < min_len) continue;
-					if (len < 0)
-						sv.push({ ctg:s.ctg, pos:s.pos, ctg2:s.ctg, pos2:en, svtype:"DEL", svlen:len, ori:">>", vaf:s.vaf });
-					else
-						sv.push({ ctg:s.ctg, pos:s.pos, ctg2:s.ctg, pos2:en, svtype:"INS", svlen:len, ori:">>", vaf:s.vaf });
+					s.ori = ">>", s.svlen = len, s.svtype = len < 0? "DEL" :"INS";
+					sv.push(s);
 				}
 			} else { // other SV encoding
 				if (t[2] !== ".") {
@@ -930,18 +967,20 @@ function gc_read_bed(fn) {
 }
 
 function gc_cmd_view(args) {
-	let min_read_len = 100, ignore_flt = false, check_gt = false, count_long = false, bed = null;
-	for (const o of getopt(args, "l:FGCb:")) {
+	let min_read_len = 100, ignore_flt = false, check_gt = false, count_long = false, min_count = 0, bed = null;
+	for (const o of getopt(args, "l:FGCb:c:")) {
 		if (o.opt === "-l") min_read_len = parseNum(o.arg);
 		else if (o.opt === "-F") ignore_flt = true;
 		else if (o.opt === "-G") check_gt = true;
 		else if (o.opt === "-C") count_long = true;
 		else if (o.opt === "-b") bed = gc_read_bed(o.arg);
+		else if (o.opt === "-c") min_count = parseInt(o.arg);
 	}
 	if (args.length == 0) {
 		print("Usage: gafcall.js view [options] <in.vcf>");
 		print("Options:");
 		print(`  -l NUM       min length [${min_read_len}]`);
+		print(`  -c INT       min supporting read count [${min_count}]`);
 		print(`  -b FILE      regions to include []`);
 		print(`  -F           ignore FILTER field in VCF`);
 		print(`  -G           check GT in VCF`);
@@ -949,7 +988,7 @@ function gc_cmd_view(args) {
 		return;
 	}
 	for (let j = 0; j < args.length; ++j) {
-		const sv = gc_parse_sv(min_read_len, args[j], ignore_flt, check_gt);
+		const sv = gc_parse_sv(args[j], min_read_len, min_count, ignore_flt, check_gt);
 		let cnt = [ 0, 0, 0, 0, 0 ];
 		for (let i = 0; i < sv.length; ++i) {
 			const s = sv[i];
@@ -1038,6 +1077,7 @@ function gc_cmp_sv(opt, base, test, label) {
 		const t = test[j];
 		if (t.svtype !== "BND" && Math.abs(t.svlen) < opt.min_len) continue; // not long enough for non-BND type; note that t.ctg === t.ctg2 MUST stand due to assertion in parsing
 		if (t.svtype === "BND" && t.ctg === t.ctg2 && Math.abs(t.svlen) < opt.min_len) continue; // not long enough; in principle, this can be merged to the line above
+		if (t.count > 0 && t.count < opt.min_count) continue; // filter by count
 		if (t.vaf != null && t.vaf < opt.min_vaf) continue; // filter by VAF
 		if (opt.bed != null) {
 			if (opt.bed[t.ctg] == null || opt.bed[t.ctg2] == null) continue;
@@ -1056,11 +1096,12 @@ function gc_cmp_sv(opt, base, test, label) {
 }
 
 function gc_cmd_eval(args) {
-	let opt = { min_len:100, read_len_ratio:0.8, win_size:500, min_len_ratio:0.6, min_vaf:0, bed:null, dbg:false, print_err:false, ignore_flt:false, check_gt:false };
-	for (const o of getopt(args, "dr:l:w:em:v:b:FG")) {
+	let opt = { min_len:100, read_len_ratio:0.8, win_size:500, min_len_ratio:0.6, min_vaf:0, min_count:0, bed:null, dbg:false, print_err:false, ignore_flt:false, check_gt:false };
+	for (const o of getopt(args, "dr:l:w:em:v:b:c:FG")) {
 		if (o.opt === "-d") opt.dbg = true;
 		else if (o.opt === "-b") opt.bed = gc_read_bed(o.arg);
 		else if (o.opt === "-l") opt.min_len = parseNum(o.arg);
+		else if (o.opt === "-c") opt.min_count = parseInt(o.arg);
 		else if (o.opt === "-m") opt.min_len_ratio = parseFloat(o.arg);
 		else if (o.opt === "-r") opt.read_len_ratio = parseFloat(o.arg);
 		else if (o.opt === "-w") opt.win_size = parseNum(o.arg);
@@ -1074,10 +1115,11 @@ function gc_cmd_eval(args) {
 		print("Options:");
 		print(`  -b FILE     confident regions in BED []`);
 		print(`  -l NUM      min SVLEN [${opt.min_len}]`);
+		print(`  -c INT      min supporting read count [${opt.min_count}]`);
 		print(`  -w NUM      fuzzy window size [${opt.win_size}]`);
 		print(`  -r FLOAT    read SVs longer than {-l}*FLOAT [${opt.read_len_ratio}]`);
 		print(`  -m FLOAT    two SVs regarded the same if length ratio above [${opt.min_len_ratio}]`);
-		print(`  -v FLOAT    ignore VAF below FLOAT (requiring VAF in VCF) [${opt.min_vaf}]`);
+		//print(`  -v FLOAT    ignore VAF below FLOAT (requiring VAF in VCF) [${opt.min_vaf}]`);
 		print(`  -F          ignore FILTER in VCF`);
 		print(`  -G          check GT in VCF`);
 		print(`  -e          print errors`);
@@ -1086,8 +1128,8 @@ function gc_cmd_eval(args) {
 	const min_read_len = Math.floor(opt.min_len * opt.read_len_ratio + .499);
 
 	if (args.length === 2) { // two-sample mode
-		const base = gc_parse_sv(min_read_len, args[0], opt.ignore_flt, opt.check_gt);
-		const test = gc_parse_sv(min_read_len, args[1], opt.ignore_flt, opt.check_gt);
+		const base = gc_parse_sv(args[0], min_read_len, opt.min_count, opt.ignore_flt, opt.check_gt);
+		const test = gc_parse_sv(args[1], min_read_len, opt.min_count, opt.ignore_flt, opt.check_gt);
 		const [tot_fn, fn] = gc_cmp_sv(opt, test, base, "FN");
 		const [tot_fp, fp] = gc_cmp_sv(opt, base, test, "FP");
 		print("RN", tot_fn, fn, (fn / tot_fn).toFixed(4), args[0]);
@@ -1095,7 +1137,7 @@ function gc_cmd_eval(args) {
 	} else { // multi-sample mode
 		let vcf = [];
 		for (let i = 0; i < args.length; ++i)
-			vcf[i] = gc_parse_sv(min_read_len, args[i], opt.ignore_flt, opt.check_gt);
+			vcf[i] = gc_parse_sv(args[i], min_read_len, opt.min_count, opt.ignore_flt, opt.check_gt);
 		for (let i = 0; i < args.length; ++i) {
 			let a = [ "SN" ];
 			for (let j = 0; j < args.length; ++j) {

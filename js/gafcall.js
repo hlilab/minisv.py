@@ -1,6 +1,6 @@
 #!/usr/bin/env k8
 
-const gc_version = "r128";
+const gc_version = "r129";
 
 /**************
  * From k8.js *
@@ -1233,7 +1233,7 @@ function gc_cmd_snfpair(args) {
 			let st = t[8+opt.tumor].split(":");
 			let fmt = t[8].split(":");
 			for (let i = 0; i < fmt.length; ++i) {
-				if (fmt[i] === "DV" && parseInt(sn[i]) == 0 && parseInt(st[i]) > 0) {
+				if (fmt[i] === "DV" && (sn[i] == "NA" || parseInt(sn[i]) == 0) && parseInt(st[i]) > 0) {
 					print(line);
 					continue;
 				}

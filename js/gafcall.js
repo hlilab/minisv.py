@@ -1,6 +1,6 @@
 #!/usr/bin/env k8
 
-const gc_version = "r127";
+const gc_version = "r128";
 
 /**************
  * From k8.js *
@@ -890,7 +890,7 @@ function gc_parse_sv(fn, min_len, min_cnt, ignore_flt, check_gt) {
 		if (cnt_tot > 0 && cnt_tot < min_cnt) continue; // too few supporting reads
 		if (type == 2) { // BED line
 			t[2] = parseInt(t[2]);
-			if (t[1] > t[2]) throw("incorrected BED?");
+			if (t[1] > t[2]) throw("incorrect BED?");
 			if (Math.abs(svlen) < min_len) continue;
 			sv.push({ ctg:t[0], pos:t[1], ctg2:t[0], pos2:t[2], ori:">>", svtype:svtype, svlen:svlen, count:cnt_tot, vaf:1 });
 		} else if (type == 3) { // breakpoint line
@@ -904,7 +904,7 @@ function gc_parse_sv(fn, min_len, min_cnt, ignore_flt, check_gt) {
 			let s = { ctg:t[0], pos:t[1]-1, ctg2:t[0], pos2:en, ori:">>", count:cnt_tot, vaf:1 };
 			if ((m = /\bVAF=([^\s;]+)/.exec(info)) != null)
 				s.vaf = parseFloat(m[1]);
-			if (/^[A-Z,\*]+$/.test(t[4])) { // assume full allele sequence; override SVTYPE/SVLEN even if present
+			if (/^[A-Z,\*]+$/.test(t[4]) && t[4] != "SV" && t[4] != "CSV") { // assume full allele sequence; override SVTYPE/SVLEN even if present
 				let alt = t[4].split(",");
 				for (let i = 0; i < alt.length; ++i) {
 					const a = alt[i], len = a.length - rlen;

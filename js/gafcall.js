@@ -1,6 +1,6 @@
 #!/usr/bin/env k8
 
-const gc_version = "r130";
+const gc_version = "r131";
 
 /**************
  * From k8.js *
@@ -1108,8 +1108,8 @@ function gc_cmp_sv(opt, base, test, label) {
 }
 
 function gc_cmd_eval(args) {
-	let opt = { min_len:100, read_len_ratio:0.8, win_size:500, min_len_ratio:0.6, min_vaf:0, min_count:0, bed:null, dbg:false, print_err:false, ignore_flt:false, check_gt:false };
-	for (const o of getopt(args, "dr:l:w:em:v:b:c:FG")) {
+	let opt = { min_len:100, read_len_ratio:0.8, win_size:500, min_len_ratio:0.6, min_vaf:0, min_count:0, bed:null, dbg:false, print_err:false, ignore_flt:false, check_gt:false, search_best:false };
+	for (const o of getopt(args, "dr:l:w:em:v:b:c:FGC")) {
 		if (o.opt === "-d") opt.dbg = true;
 		else if (o.opt === "-b") opt.bed = gc_read_bed(o.arg);
 		else if (o.opt === "-l") opt.min_len = parseNum(o.arg);
@@ -1121,6 +1121,7 @@ function gc_cmd_eval(args) {
 		else if (o.opt === "-F") opt.ignore_flt = true;
 		else if (o.opt === "-G") opt.check_gt = true;
 		else if (o.opt === "-e") opt.print_err = true;
+		else if (o.opt === "-C") opt.search_best = true;
 	}
 	if (args.length < 2) {
 		print("Usgae: gafcall.js eval [options] <base.vcf> <test.vcf>");
@@ -1134,6 +1135,7 @@ function gc_cmd_eval(args) {
 		//print(`  -v FLOAT    ignore VAF below FLOAT (requiring VAF in VCF) [${opt.min_vaf}]`);
 		print(`  -F          ignore FILTER in VCF`);
 		print(`  -G          check GT in VCF`);
+		print(`  -C          search for the best count threshold`);
 		print(`  -e          print errors`);
 		return;
 	}
@@ -1142,10 +1144,30 @@ function gc_cmd_eval(args) {
 	if (args.length === 2) { // two-sample mode
 		const base = gc_parse_sv(args[0], min_read_len, opt.min_count, opt.ignore_flt, opt.check_gt);
 		const test = gc_parse_sv(args[1], min_read_len, opt.min_count, opt.ignore_flt, opt.check_gt);
-		const [tot_fn, fn] = gc_cmp_sv(opt, test, base, "FN");
-		const [tot_fp, fp] = gc_cmp_sv(opt, base, test, "FP");
-		print("RN", tot_fn, fn, (fn / tot_fn).toFixed(4), args[0]);
-		print("RP", tot_fp, fp, (fp / tot_fp).toFixed(4), args[1]);
+		if (opt.search_best) {
+			let best_c = 1, min_err = 1e9, best_tot_fn = -1, best_tot_fp = -1, best_fn = -1, best_fp = -1;
+			for (let c = 1; c < 10000; ++c) {
+				let test2 = [];
+				for (let i = 0; i < test.length; ++i)
+					if (test[i].count > 0 && test[i].count >= c)
+						test2.push(test[i]);
+				const [tot_fn, fn] = gc_cmp_sv(opt, test2, base,  "FN");
+				const [tot_fp, fp] = gc_cmp_sv(opt, base,  test2, "FP");
+				if (tot_fn == 0 || tot_fp == 0) break;
+				if (min_err > fn + fp)
+					min_err = fn + fp, best_c = c, best_tot_fp = tot_fp, best_tot_fn = tot_fn, best_fp = fp, best_fn = fn;
+				else if (min_err < fn + fp)
+					break;
+			}
+			print("BC", best_c);
+			print("RN", best_tot_fn, best_fn, (best_fn / best_tot_fn).toFixed(4), args[0]);
+			print("RP", best_tot_fp, best_fp, (best_fp / best_tot_fp).toFixed(4), args[1]);
+		} else {
+			const [tot_fn, fn] = gc_cmp_sv(opt, test, base, "FN");
+			const [tot_fp, fp] = gc_cmp_sv(opt, base, test, "FP");
+			print("RN", tot_fn, fn, (fn / tot_fn).toFixed(4), args[0]);
+			print("RP", tot_fp, fp, (fp / tot_fp).toFixed(4), args[1]);
+		}
 	} else { // multi-sample mode
 		let vcf = [];
 		for (let i = 0; i < args.length; ++i)

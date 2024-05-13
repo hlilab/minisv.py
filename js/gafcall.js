@@ -1,6 +1,6 @@
 #!/usr/bin/env k8
 
-const gc_version = "r129";
+const gc_version = "r130";
 
 /**************
  * From k8.js *
@@ -869,7 +869,7 @@ function gc_parse_sv(fn, min_len, min_cnt, ignore_flt, check_gt) {
 		if (!/^\d+$/.test(t[1])) continue;
 		//print("X", line);
 		t[1] = parseInt(t[1]);
-		let type = 0, info = null;
+		let type = 0, info = null, inv = false;
 		if (/^[><][><]$/.test(t[2])) type = 3, info = t[8]; // breakpoint
 		else if (/;/.test(t[7])) type = 1, info = t[7]; // VCF
 		else if (/^\d+$/.test(t[2]) && /;/.test(t[6])) type = 2, info = t[6]; // BED
@@ -879,6 +879,7 @@ function gc_parse_sv(fn, min_len, min_cnt, ignore_flt, check_gt) {
 			svtype = m[1];
 		if ((m = /\bSVLEN=([^\s;]+)/.exec(info)) != null)
 			svlen = parseFloat(m[1]);
+		if (svtype == "INV") inv = true;
 		if (type == 2 || type == 3) { // get supporting read count from GSV
 			if ((m = /\bcount=([^\s;]+)/.exec(info)) != null) {
 				const [cf, cr] = gc_get_count_gsv(m[1]);
@@ -892,16 +893,17 @@ function gc_parse_sv(fn, min_len, min_cnt, ignore_flt, check_gt) {
 			t[2] = parseInt(t[2]);
 			if (t[1] > t[2]) throw("incorrect BED?");
 			if (Math.abs(svlen) < min_len) continue;
-			sv.push({ ctg:t[0], pos:t[1], ctg2:t[0], pos2:t[2], ori:">>", svtype:svtype, svlen:svlen, count:cnt_tot, vaf:1 });
+			sv.push({ ctg:t[0], pos:t[1], ctg2:t[0], pos2:t[2], ori:">>", svtype:svtype, svlen:svlen, inv:inv, count:cnt_tot, vaf:1 });
 		} else if (type == 3) { // breakpoint line
 			t[4] = parseInt(t[4]);
 			if (t[0] === t[3] && Math.abs(svlen) < min_len) continue;
-			sv.push({ ctg:t[0], pos:t[1], ctg2:t[3], pos2:t[4], ori:t[2], svtype:svtype, svlen:svlen, count:cnt_tot, vaf:1 });
+			if (t[0] == t[3] && (t[2] == "><" || t[2] == "<>")) inv = true;
+			sv.push({ ctg:t[0], pos:t[1], ctg2:t[3], pos2:t[4], ori:t[2], svtype:svtype, svlen:svlen, inv:inv, count:cnt_tot, vaf:1 });
 		} else if (type == 1) { // VCF line
 			if (!ignore_flt && t[6] !== "PASS" && t[6] !== ".") continue; // ignore filtered calls
 			if (check_gt && t.length >= 9 && /^0[\/\|]0/.test(t[9])) continue; // not a variant
 			let rlen = t[3].length, en = t[1] + rlen - 1;
-			let s = { ctg:t[0], pos:t[1]-1, ctg2:t[0], pos2:en, ori:">>", count:cnt_tot, vaf:1 };
+			let s = { ctg:t[0], pos:t[1]-1, ctg2:t[0], pos2:en, ori:">>", inv:inv, count:cnt_tot, vaf:1 };
 			if ((m = /\bVAF=([^\s;]+)/.exec(info)) != null)
 				s.vaf = parseFloat(m[1]);
 			if (/^[A-Z,\*]+$/.test(t[4]) && t[4] != "SV" && t[4] != "CSV") { // assume full allele sequence; override SVTYPE/SVLEN even if present
@@ -935,6 +937,7 @@ function gc_parse_sv(fn, min_len, min_cnt, ignore_flt, check_gt) {
 				else if ((m = /^\]([^\s:]+):(\d+)\][A-Z]+$/.exec(t[4])) != null) s.ctg2 = m[1], s.pos2 = parseInt(m[2]), s.ori = "<<";
 				else if ((m = /^\[([^\s:]+):(\d+)\[[A-Z]+$/.exec(t[4])) != null) s.ctg2 = m[1], s.pos2 = parseInt(m[2]), s.ori = "<>";
 				else if ((m = /^[A-Z]+\]([^\s:]+):(\d+)\]$/.exec(t[4])) != null) s.ctg2 = m[1], s.pos2 = parseInt(m[2]), s.ori = "><";
+				if (s.ctg == s.ctg2 && (s.ori == "><" || s.ori == "<>")) s.inv = true;
 				if (svtype !== "BND" && s.ctg !== s.ctg2) throw Error("different contigs for non-BND type");
 				if (svtype === "BND" && s.ctg === s.ctg2) {
 					if (svlen == 0 && Math.abs(s.pos2 - s.pos) < min_len) continue;
@@ -967,14 +970,15 @@ function gc_read_bed(fn) {
 }
 
 function gc_cmd_view(args) {
-	let min_read_len = 100, ignore_flt = false, check_gt = false, count_long = false, min_count = 0, bed = null;
-	for (const o of getopt(args, "l:FGCb:c:")) {
+	let min_read_len = 100, ignore_flt = false, check_gt = false, count_long = false, min_count = 0, classify_inv = false, bed = null;
+	for (const o of getopt(args, "l:FGCb:c:I")) {
 		if (o.opt === "-l") min_read_len = parseNum(o.arg);
 		else if (o.opt === "-F") ignore_flt = true;
 		else if (o.opt === "-G") check_gt = true;
 		else if (o.opt === "-C") count_long = true;
 		else if (o.opt === "-b") bed = gc_read_bed(o.arg);
 		else if (o.opt === "-c") min_count = parseInt(o.arg);
+		else if (o.opt === "-I") classify_inv = true;
 	}
 	if (args.length == 0) {
 		print("Usage: gafcall.js view [options] <in.vcf>");
@@ -985,11 +989,12 @@ function gc_cmd_view(args) {
 		print(`  -F           ignore FILTER field in VCF`);
 		print(`  -G           check GT in VCF`);
 		print(`  -C           count 20kb, 100kb, 1Mb and translocations`);
+		print(`  -I           classify inversions`);
 		return;
 	}
 	for (let j = 0; j < args.length; ++j) {
 		const sv = gc_parse_sv(args[j], min_read_len, min_count, ignore_flt, check_gt);
-		let cnt = [ 0, 0, 0, 0, 0 ];
+		let cnt = [ 0, 0, 0, 0, 0 ], cnt_inv = 0;
 		for (let i = 0; i < sv.length; ++i) {
 			const s = sv[i];
 			if (bed != null) {
@@ -1000,6 +1005,8 @@ function gc_cmd_view(args) {
 			if (count_long) {
 				if (s.ctg != s.ctg2) {
 					++cnt[0], ++cnt[1], ++cnt[2], ++cnt[3];
+				} else if (classify_inv && s.inv) {
+					++cnt_inv;
 				} else {
 					const len = Math.abs(s.svlen);
 					if (len >= 1000000) ++cnt[1];
@@ -1011,8 +1018,13 @@ function gc_cmd_view(args) {
 				print(s.ctg, s.pos, s.ori, s.ctg2, s.pos2, s.svtype, s.svlen);
 			}
 		}
-		if (count_long)
-			print(cnt.join("\t"), args[j]);
+		cnt[4] -= cnt_inv;
+		if (count_long) {
+			if (classify_inv)
+				print(cnt.join("\t"), cnt_inv, args[j]);
+			else
+				print(cnt.join("\t"), args[j]);
+		}
 	}
 }
 

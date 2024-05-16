@@ -1,6 +1,6 @@
 #!/usr/bin/env k8
 
-const gc_version = "r131";
+const gc_version = "r132";
 
 /**************
  * From k8.js *
@@ -307,7 +307,8 @@ function gc_cmd_extract(args) {
 				if (op == "M" || op == "=" || op == "X" || op == "I" || op === "S" || op === "H")
 					q += len;
 			}
-			if (a.length == 0 || a.length > y.qlen * 1e-4 * opt.max_cnt_10k) continue;
+			if (a.length == 0) continue; // no long INDELs
+			if (a.length > 1 && a.length > y.qlen * 1e-4 * opt.max_cnt_10k) continue; // too many INDELs
 			// set stl/enl and str/enr
 			for (let i = 0; i < a.length; ++i) {
 				a[i].stl = a[i].str = a[i].st;

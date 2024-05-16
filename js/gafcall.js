@@ -1,6 +1,6 @@
 #!/usr/bin/env k8
 
-const gc_version = "r132";
+const gc_version = "r133";
 
 /**************
  * From k8.js *
@@ -190,16 +190,19 @@ function gc_cmd_extract(args) {
 	if (args.length == 0) {
 		print("Usage: gafcall.js extract [options] <stable.gaf>");
 		print("Options:");
-		print(`  -n STR     sample name [${opt.name}]`);
-		print(`  -l INT     min INDEL len [${opt.min_len}]`);
-		print(`  -f FLOAT   min mapped query fraction [${opt.min_frac}]`);
-		print(`  -c INT     max number of long INDELs per 10kb [${opt.max_cnt_10k}]`);
-		print(`  -q INT     min mapq [${opt.min_mapq}]`);
-		print(`  -Q INT     min mapq for alignment ends [${opt.min_mapq_end}]`);
-		print(`  -e INT     min alignment length at ends [${opt.min_aln_len_end}]`);
-		print(`  -m INT     min alignment length in the middle [${opt.min_aln_len_mid}]`);
-		print(`  -a INT     penalty for non-polyA bases [${opt.polyA_pen}]`);
-		print(`  -b FILE    BED for centromeres []`);
+		print("  General:");
+		print(`    -n STR     sample name [${opt.name}]`);
+		print(`    -q INT     min mapq [${opt.min_mapq}]`);
+		print(`    -b FILE    BED for centromeres []`);
+		print("  Long INDELs:");
+		print(`    -l INT     min INDEL len [${opt.min_len}]`);
+		print(`    -f FLOAT   min mapped query fraction [${opt.min_frac}]`);
+		print(`    -c INT     max number of long INDELs per 10kb [${opt.max_cnt_10k}]`);
+		print(`    -a INT     penalty for non-polyA bases [${opt.polyA_pen}]`);
+		print(`  Breakends:`);
+		print(`    -Q INT     min mapq for alignment ends [${opt.min_mapq_end}]`);
+		print(`    -e INT     min alignment length at ends [${opt.min_aln_len_end}]`);
+		print(`    -m INT     min alignment length in the middle [${opt.min_aln_len_mid}]`);
 		return;
 	}
 

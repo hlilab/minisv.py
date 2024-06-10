@@ -8,9 +8,10 @@ from typing import Optional
 import rich_click as click
 
 from .eval import gc_read_bed
+from .phase import extract_phase_HP, annotate_HP
 
 ##from .cygafcall import GafParser as cy_GafParser
-from .gafcall import GafParser
+from .minisv import GafParser
 from .io import gc_cmd_view, merge_indel_breakpoints, parseNum, write_vcf
 
 __version__ = "0.1"
@@ -66,95 +67,95 @@ def cli(ctx):
     pass
 
 
-@cli.command()
-@click.option(
-    "-i",
-    "--input",
-    required=True,
-    type=click.Path(exists=True),
-    help="tumor or normal sample input gaf/paf file, this is required input, if paired normal sample provided, this should be input tumor sample",
-)
-@click.option(
-    "--vntr",
-    required=False,
-    type=click.Path(exists=True),
-    help="optional vntr sites for flagging potential false discovery",
-)
-@click.option(
-    "--cent",
-    required=False,
-    type=click.Path(exists=True),
-    help="optional centromere sites for flagging potential false discovery",
-)
-@click.option(
-    "--l1",
-    required=False,
-    type=click.Path(exists=True),
-    help="optional L1 sequence fasta for filtering L1 elements analysis",
-)
-@click.option(
-    "-r", "--support_read", required=True, type=int, help="supported read threshold"
-)
-@click.option("-m", "--mapq", required=True, type=int, help="read mapping quality")
-@click.option(
-    "-c", "--cpu", required=True, type=int, default=1, help="read mapping quality"
-)
-@click.option("-l", "--mlen", required=True, type=int, help="min indel length")
-@click.option("-a", "--maplen", required=True, type=int, help="min mapping length")
-@click.option(
-    "-n",
-    "--normal",
-    required=False,
-    type=str,
-    help="paired normal sample input gaf/paf file if tumor-only and normal-only mode, skip this option",
-)
-@click.option(
-    "-p", "--prefix", required=True, type=str, help="output prefix for table and figure"
-)
-@click.option(
-    "-s",
-    "--assembly",
-    required=True,
-    type=str,
-    help="assembly version, e.g., chm13graph,chm13linear,grch37graph,grch37linear,grch38graph,grch38linear",
-)
-@click.option("-d", "--ds", is_flag=True, help="support ds tag or not")
-@click.option("-v", "--verbose", is_flag=True, help="verbose option for debug")
-def getsv(
-    input: str,
-    vntr: str,
-    cent: str,
-    l1: str,
-    support_read: int,
-    mapq: int,
-    cpu: int,
-    mlen: int,
-    maplen: int,
-    normal: str,
-    prefix: str,
-    ds: bool,
-    assembly: str,
-    verbose: bool,
-):
-    """Get indel reads and merge the microhomology reads into large indels"""
-    print("get indel...")
-    command = " ".join(sys.argv)
-    print(command)
-
-    input_samples = [input, normal] if normal is not None else [input]
-    gafs = GafParser(input_samples, prefix, assembly, vntr, cent, l1)
-    all_breakpts = gafs.parse_sv_on_group_reads(
-        mapq, mlen, maplen, verbose, n_cpus=cpu, ds=ds
-    )
-
-    gafs.merge_indel(min_cnt=support_read, min_mapq=mapq)
-    merged_breakpt_vcf_list = gafs.merge_breakpts(all_breakpts)
-
-    # output bedpe format
-    merge_indel_breakpoints(prefix, gafs.breakpt_file, gafs.indel_file)
-
-    # output vcf format
-    gafs.bed2vcf(command=command, merged_breakpt_vcf_list=merged_breakpt_vcf_list)
+#@cli.command()
+#@click.option(
+#    "-i",
+#    "--input",
+#    required=True,
+#    type=click.Path(exists=True),
+#    help="tumor or normal sample input gaf/paf file, this is required input, if paired normal sample provided, this should be input tumor sample",
+#)
+#@click.option(
+#    "--vntr",
+#    required=False,
+#    type=click.Path(exists=True),
+#    help="optional vntr sites for flagging potential false discovery",
+#)
+#@click.option(
+#    "--cent",
+#    required=False,
+#    type=click.Path(exists=True),
+#    help="optional centromere sites for flagging potential false discovery",
+#)
+#@click.option(
+#    "--l1",
+#    required=False,
+#    type=click.Path(exists=True),
+#    help="optional L1 sequence fasta for filtering L1 elements analysis",
+#)
+#@click.option(
+#    "-r", "--support_read", required=True, type=int, help="supported read threshold"
+#)
+#@click.option("-m", "--mapq", required=True, type=int, help="read mapping quality")
+#@click.option(
+#    "-c", "--cpu", required=True, type=int, default=1, help="read mapping quality"
+#)
+#@click.option("-l", "--mlen", required=True, type=int, help="min indel length")
+#@click.option("-a", "--maplen", required=True, type=int, help="min mapping length")
+#@click.option(
+#    "-n",
+#    "--normal",
+#    required=False,
+#    type=str,
+#    help="paired normal sample input gaf/paf file if tumor-only and normal-only mode, skip this option",
+#)
+#@click.option(
+#    "-p", "--prefix", required=True, type=str, help="output prefix for table and figure"
+#)
+#@click.option(
+#    "-s",
+#    "--assembly",
+#    required=True,
+#    type=str,
+#    help="assembly version, e.g., chm13graph,chm13linear,grch37graph,grch37linear,grch38graph,grch38linear",
+#)
+#@click.option("-d", "--ds", is_flag=True, help="support ds tag or not")
+#@click.option("-v", "--verbose", is_flag=True, help="verbose option for debug")
+#def getsv(
+#    input: str,
+#    vntr: str,
+#    cent: str,
+#    l1: str,
+#    support_read: int,
+#    mapq: int,
+#    cpu: int,
+#    mlen: int,
+#    maplen: int,
+#    normal: str,
+#    prefix: str,
+#    ds: bool,
+#    assembly: str,
+#    verbose: bool,
+#):
+#    """Get indel reads and merge the microhomology reads into large indels"""
+#    print("get indel...")
+#    command = " ".join(sys.argv)
+#    print(command)
+#
+#    input_samples = [input, normal] if normal is not None else [input]
+#    gafs = GafParser(input_samples, prefix, assembly, vntr, cent, l1)
+#    all_breakpts = gafs.parse_sv_on_group_reads(
+#        mapq, mlen, maplen, verbose, n_cpus=cpu, ds=ds
+#    )
+#
+#    gafs.merge_indel(min_cnt=support_read, min_mapq=mapq)
+#    merged_breakpt_vcf_list = gafs.merge_breakpts(all_breakpts)
+#
+#    # output bedpe format
+#    merge_indel_breakpoints(prefix, gafs.breakpt_file, gafs.indel_file)
+#
+#    # output vcf format
+#    gafs.bed2vcf(command=command, merged_breakpt_vcf_list=merged_breakpt_vcf_list)
 
 
 @cli.command()
@@ -194,7 +195,7 @@ def getsv(
     "-b", required=False, type=click.Path(exists=True), help="centromere bed file"
 )
 @click.argument("filename", nargs=1)
-def sv(
+def extract(
     q: int,
     x: int,
     svlen: str,
@@ -208,6 +209,7 @@ def sv(
     b: str,
     filename: tuple,
 ):
+    """Extract raw INDEL and breakpoints"""
     from .read_parser import load_reads
 
     options = opt(
@@ -479,6 +481,20 @@ def vcf(input):
 def formatvcf(input):
     options = None
     write_vcf(options, input)
+
+
+@cli.command()
+@click.argument("input", type=click.File("r"), default=sys.stdin)
+def extracthp(input):
+    options = None
+    extract_phase_HP(input)
+
+
+@cli.command()
+@click.argument("hptagtsv", type=click.File("r"), default=sys.stdin, nargs=1)
+@click.argument("msv", type=str, nargs=1)
+def annotatehp(hptagtsv, msv):
+    annotate_HP(hptagtsv, msv)
 
 
 @cli.command()

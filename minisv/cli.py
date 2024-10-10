@@ -12,6 +12,7 @@ from .phase import extract_phase_HP, annotate_HP
 
 ##from .cygafcall import GafParser as cy_GafParser
 from .minisv import GafParser
+from .filtercaller import call_filterseverus, call_filtersnf, call_filtermsv
 from .io import gc_cmd_view, merge_indel_breakpoints, parseNum, write_vcf
 
 __version__ = "0.1"
@@ -495,6 +496,45 @@ def extracthp(input):
 @click.argument("msv", type=str, nargs=1)
 def annotatehp(hptagtsv, msv):
     annotate_HP(hptagtsv, msv)
+
+
+@cli.command()
+@click.argument("severusvcf", type=str, nargs=1)
+@click.argument("readidtsv", type=str, nargs=1)
+@click.argument("msvasm", type=str, nargs=1)
+@click.argument("outstat", type=str, nargs=1)
+def filterseverus(severusvcf, readidtsv, msvasm, outstat):
+    """
+    filter Severus results based on read ids overlap with graph alignment/self alignment
+    """
+    print("Severus filter")
+    print(severusvcf, readidtsv, msvasm, outstat)
+
+    call_filterseverus(severusvcf, readidtsv, msvasm, outstat)
+
+
+@cli.command()
+@click.argument("snfvcf", type=str, nargs=1)
+@click.argument("msvasm", type=str, nargs=1)
+@click.argument("outstat", type=str, nargs=1)
+def filtersnf(snfvcf, msvasm, outstat):
+    """
+    filter Sniffles2 results based on read ids overlap with graph alignment/self alignment
+    """
+    print("Sniffles2 filter")
+    call_filtersnf(snfvcf, msvasm, outstat)
+
+
+@cli.command()
+@click.argument("msvtg", type=str, nargs=1)
+@click.argument("msvasm", type=str, nargs=1)
+@click.argument("outstat", type=str, nargs=1)
+def filtermsv(msvtg, msvasm, outstat):
+    """
+    filter Sniffles2 results based on read ids overlap with graph alignment/self alignment
+    """
+    print("minisv tg filter")
+    call_filtermsv(msvtg, msvasm, outstat)
 
 
 @cli.command()

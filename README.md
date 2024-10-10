@@ -4,31 +4,31 @@
 
 ```sh
 sudo apt install build-essential
-mamba create -n gaftools python==3.10 poetry cython==3.0.7
-conda activate gaftools
-git clone https://github.com/qinqian/gaftools
+mamba create -n msvpy python==3.12 poetry cython==3.0.7
+conda activate msvpy
+git clone https://github.com/qinqian/minisv.py
 make
 
 tumor_gaf=tumor_gaf
 normal_gaf=normal_gaf
 
 # tumor-only or normal-only mode
-gaftools sv -b centromere.bed -n tumor tumor_gaf > tumor_sv.bed
-sort -k1,1 -k2,2n tumor_sv.bed | gaftools merge - > tumor_mergedsv.bed
+minisv sv -b centromere.bed -n tumor tumor_gaf > tumor_sv.bed
+sort -k1,1 -k2,2n tumor_sv.bed | minisv merge - > tumor_mergedsv.bed
 
 # normal-only model
-gaftools sv -b centromere.bed -n normal normal_gaf > normal_sv.bed
-sort -k1,1 -k2,2n normal_sv.bed | gaftools merge - > normal_mergedsv.bed
+minisv sv -b centromere.bed -n normal normal_gaf > normal_sv.bed
+sort -k1,1 -k2,2n normal_sv.bed | minisv merge - > normal_mergedsv.bed
 
 # tumor-normal pair mode
-gaftools sv -b centromere.bed -n tumor tumor_gaf > tumor_sv.bed
-gaftools sv -b centromere.bed -n normal normal_gaf > normal_sv.bed
-cat tumor_sv.bed normal_sv.bed | sort -k1,1 -k2,2n - | gaftools merge - > tumor_normal_pair_mergedsv.bed
+minisv sv -b centromere.bed -n tumor tumor_gaf > tumor_sv.bed
+minisv sv -b centromere.bed -n normal normal_gaf > normal_sv.bed
+cat tumor_sv.bed normal_sv.bed | sort -k1,1 -k2,2n - | minisv merge - > tumor_normal_pair_mergedsv.bed
 
 
 Or use docker version
 
-docker build -t gaftools .
+docker build -t minisv .
 
 ```
 
@@ -39,7 +39,7 @@ docker build -t gaftools .
 
 ## <a name="intro"></a>Introduction
 
-`gaftools` is a pangenome tool that predicts germline or somatic structural variation from the long read whole genome sequencing data for tumor-normal pairs of samples, tumor-only or normal-only sample. The experiment could be either normal-only, tumor-only or tumor-normal paired sequencing.
+`minisv` is a pangenome tool that predicts germline or somatic structural variation from the long read whole genome sequencing data for tumor-normal pairs of samples, tumor-only or normal-only sample. The experiment could be either normal-only, tumor-only or tumor-normal paired sequencing.
 
 ## Table of Contents
 
@@ -55,7 +55,7 @@ docker build -t gaftools .
 
 ## <a name="process"></a>Data preprocessing
 
-We provide [all scripts](https://github.com/qinqian/pangenome_sv_benchmarking) for processing the bam, cram file to prepare input data for gaftools.
+We provide [all scripts](https://github.com/qinqian/pangenome_sv_benchmarking) for processing the bam, cram file to prepare input data for minisv.
 
 Get the reference graph and linear genome,
 

@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "minisv"
-version = "0.1.0"
+version = "0.1.2"
 description = ""
 authors = ["qinqian <qqin@broadinstitute.org>"]
 readme = "README.md"

@@ -15,7 +15,7 @@ from .minisv import GafParser
 from .filtercaller import call_filterseverus, call_filtersnf, call_filtermsv
 from .io import gc_cmd_view, merge_indel_breakpoints, parseNum, write_vcf
 
-__version__ = "0.1"
+__version__ = "0.1.2"
 
 
 @dataclass
@@ -61,7 +61,7 @@ class EvalOpt:
     check_gt: bool = False
 
 
-@click.group(help="Pangenome SV tool commands")
+@click.group(help="minisv tool commands")
 @click.version_option(__version__)
 @click.pass_context
 def cli(ctx):
@@ -160,13 +160,10 @@ def cli(ctx):
 
 
 @cli.command()
+@click.option("-n", required=False, default="foo", type=str, help="sample name")
 @click.option("-q", required=False, default=5, type=int, help="minimum mapping quality")
 @click.option(
-    "-x",
-    required=False,
-    default=30,
-    type=int,
-    help="minimum mapping quality in the end",
+    "-b", required=False, type=click.Path(exists=True), help="centromere bed file"
 )
 @click.option(
     "-l", "--svlen", required=False, default="100", type=str, help="minimum sv length"
@@ -174,9 +171,16 @@ def cli(ctx):
 @click.option(
     "-f", required=False, default=0.7, type=float, help="min fraction of reads"
 )
-@click.option("-d", is_flag=True, help="verbose option for debug")
 @click.option("-c", required=False, default=3, help="maximum count of sv per 10k")
 @click.option("-a", required=False, type=int, default=5, help="polyA penalty")
+@click.option("-d", is_flag=True, help="verbose option for debug")
+@click.option(
+    "-x",
+    required=False,
+    default=30,
+    type=int,
+    help="minimum mapping quality in the end",
+)
 @click.option(
     "-e",
     required=False,
@@ -191,9 +195,78 @@ def cli(ctx):
     type=int,
     help="minimum aligned length in the middle",
 )
+@click.argument("filename", nargs=1)
+def getsv(
+    q: int,
+    x: int,
+    svlen: str,
+    d: bool,
+    f: float,
+    c: int,
+    a: int,
+    e: int,
+    m: int,
+    n: str,
+    b: str,
+    filename: tuple,
+):
+    """Extract raw INDEL and breakpoints"""
+    from .read_parser import load_reads
+
+    options = opt(
+        min_mapq=q,
+        min_mapq_end=x,
+        min_len=parseNum(svlen),
+        dbg=d,
+        min_frac=f,
+        max_cnt_10k=c,
+        polyA_pen=a,
+        min_aln_len_end=e,
+        min_aln_len_mid=m,
+        name=n,
+        cen={},
+    )
+
+    if b is not None:
+        parse_centromere(b, options.cen)
+    load_reads(filename, options)
+
+
+@cli.command()
 @click.option("-n", required=False, default="foo", type=str, help="sample name")
+@click.option("-q", required=False, default=5, type=int, help="minimum mapping quality")
 @click.option(
     "-b", required=False, type=click.Path(exists=True), help="centromere bed file"
+)
+@click.option(
+    "-l", "--svlen", required=False, default="100", type=str, help="minimum sv length"
+)
+@click.option(
+    "-f", required=False, default=0.7, type=float, help="min fraction of reads"
+)
+@click.option("-c", required=False, default=3, help="maximum count of sv per 10k")
+@click.option("-a", required=False, type=int, default=5, help="polyA penalty")
+@click.option("-d", is_flag=True, help="verbose option for debug")
+@click.option(
+    "-x",
+    required=False,
+    default=30,
+    type=int,
+    help="minimum mapping quality in the end",
+)
+@click.option(
+    "-e",
+    required=False,
+    default=2000,
+    type=int,
+    help="minimum aligned length in the end",
+)
+@click.option(
+    "-m",
+    required=False,
+    default=50,
+    type=int,
+    help="minimum aligned length in the middle",
 )
 @click.argument("filename", nargs=1)
 def extract(
@@ -228,15 +301,19 @@ def extract(
     )
 
     if b is not None:
-        with open(b) as centromere_file:
-            for line in centromere_file:
-                t = line.strip().split("\t")
-                if t[0] not in options.cen:
-                    options.cen[t[0]] = []
-                options.cen[t[0]].append([int(t[1]), int(t[2])])
-            for ctg in options.cen:
-                options.cen[ctg].sort(key=lambda x: x[0])
+        parse_centromere(b, options.cen)
     load_reads(filename, options)
+
+
+def parse_centromere(b, cen):
+    with open(b) as centromere_file:
+        for line in centromere_file:
+            t = line.strip().split("\t")
+            if t[0] not in cen:
+                cen[t[0]] = []
+            cen[t[0]].append([int(t[1]), int(t[2])])
+        for ctg in cen:
+            cen[ctg].sort(key=lambda x: x[0])
 
 
 @cli.command()
@@ -503,14 +580,12 @@ def annotatehp(hptagtsv, msv):
 @click.argument("readidtsv", type=str, nargs=1)
 @click.argument("msvasm", type=str, nargs=1)
 @click.argument("outstat", type=str, nargs=1)
-def filterseverus(severusvcf, readidtsv, msvasm, outstat):
+@click.argument("consensus_ids", type=str, nargs=1)
+def filterseverus(severusvcf, readidtsv, msvasm, outstat, consensus_ids):
     """
     filter Severus results based on read ids overlap with graph alignment/self alignment
     """
-    print("Severus filter")
-    print(severusvcf, readidtsv, msvasm, outstat)
-
-    call_filterseverus(severusvcf, readidtsv, msvasm, outstat)
+    call_filterseverus(severusvcf, readidtsv, msvasm, outstat, consensus_ids)
 
 
 @cli.command()
@@ -521,7 +596,6 @@ def filtersnf(snfvcf, msvasm, outstat):
     """
     filter Sniffles2 results based on read ids overlap with graph alignment/self alignment
     """
-    print("Sniffles2 filter")
     call_filtersnf(snfvcf, msvasm, outstat)
 
 
@@ -533,7 +607,6 @@ def filtermsv(msvtg, msvasm, outstat):
     """
     filter Sniffles2 results based on read ids overlap with graph alignment/self alignment
     """
-    print("minisv tg filter")
     call_filtermsv(msvtg, msvasm, outstat)
 
 

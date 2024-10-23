@@ -104,7 +104,6 @@ def get_indel(opt, z):
             length = int(length)
             if length >= opt.min_len:
                 if op == "I":
-                    # [start, end, indel length, tsd length, polyA length, tsd seq, indel seq]
                     qoff = y.qen - (q + length) if is_rev else q + y.qst
                     a.append(
                         # NOTE: to be more accurate in indels
@@ -145,7 +144,7 @@ def get_indel(opt, z):
             if op in ["M", "=", "X", "I", "S", "H"]:
                 q += length
 
-        # No indel cigar or too many
+        # No indel cigar or too many indel
         # per 10k alleles cannot be too many
         # NOTE: considering ultralong and contig alignment
         if len(a) == 0 or len(a) > y.qlen * 1e-4 * opt.max_cnt_10k:
@@ -157,6 +156,7 @@ def get_indel(opt, z):
             a[i].enl = a[i].enr = a[i].en
 
         # parse ds:Z tag
+        # for retrotransposon
         if y.ds:
             # indel index for one read
             i = 0
@@ -176,7 +176,6 @@ def get_indel(opt, z):
                 # extract INDEL sequence with check consistency with CIGAR
                 if length >= opt.min_len:
                     if op == "+":  # insertion
-                        # NOTE: change from (x-1,x+1) to (x,x)?
                         if a[i].st != x or a[i].en != x or a[i].len != length:
                             raise Exception(
                                 "CIGAR and ds insertion not consistent line number"
@@ -219,7 +218,7 @@ def get_indel(opt, z):
                 #       right TSD?
                 rlen = len(m[4]) if m[4] is not None else 0
 
-                # NOTE: adjust TSD length?
+                # NOTE: adjust TSD length
                 a[i].stl = a[i].st - rlen
                 a[i].enl = a[i].en - rlen
                 # NOTE: for right point, why not choose the minimum point by subtracting llen
@@ -234,6 +233,10 @@ def get_indel(opt, z):
                 else:
                     a[i].qoff_l = a[i].qoff_l - rlen
                     a[i].qoff_r = a[i].qoff_r + llen
+        # end of y.ds
+
+        if opt.dbg:
+            print('X0', line)
 
         # genome graph path reference segments
         seg = []
@@ -261,7 +264,7 @@ def get_indel(opt, z):
             # https://github.com/lh3/miniasm/blob/master/PAF.md
             # https://github.com/lh3/gfatools/blob/master/doc/rGFA.md
             # [path, 0, path length, 1, 0, path length]
-            # NOTE: linear coordinate always strand == "+"?
+            # NOTE: linear coordinate always strand == "+"
             seg.append(
                 path_segment(
                     ctg=y.path,
@@ -273,14 +276,14 @@ def get_indel(opt, z):
                 )
             )
 
-        # starts and ends points for the indels on the segments
+        # starts and ends for the indels on the segments
         # also record start and end segments index
-        # these are used to overlap between path segment and indels
+        # these are used to overlap between path segments and indels
         # left
         off_stl = []
+        off_enl = []
         # right
         off_str = []
-        off_enl = []
         off_enr = []
         for i in range(len(a)):
             off_stl.append(a[i].stl)
@@ -288,19 +291,18 @@ def get_indel(opt, z):
             off_str.append(a[i].str)
             off_enr.append(a[i].enr)
 
+        global_qname = y.qname
         stl = path2ctg(seg, off_stl, False)
         enl = path2ctg(seg, off_enl, True)
         str = path2ctg(seg, off_str, False)
         enr = path2ctg(seg, off_enr, True)
-
-        global_qname = y.qname
 
         for i in range(len(a)):
             if not (
                 stl[i].seg == str[i].seg
                 and stl[i].seg == enl[i].seg
                 and str[i].seg == enr[i].seg
-            ):  # all on the same segment
+            ):  # skip all indels st and end not on the same segment
                 continue
 
             # find the corresponding segment
@@ -309,13 +311,15 @@ def get_indel(opt, z):
             en = enl[i].pos
             strand = y.strand
 
+            # graph path reverse direction
             if s.strand < 0:
-                # NOTE: this is a new update that for reverse complement tsd, why?
+                # NOTE: this is a new update that for reverse complement tsd
                 #       reverse complement sequence if strand is reverse
+                # NOTE: How about linear genome - strand??
                 a[i].polyA_len = -a[i].polyA_len
                 a[i].tsd_seq = mg_revcomp(a[i].tsd_seq)
                 a[i].int_seq = mg_revcomp(a[i].int_seq)
-                # NOTE: why reverse start and end as well?
+                # NOTE: why reverse start and end as well??
                 st = enr[i].pos
                 en = str[i].pos
                 strand = "-" if strand == "+" else "+"
@@ -330,6 +334,7 @@ def get_indel(opt, z):
                 dist_en = cal_cen_dist(opt, s.ctg, en)
                 info1 += f";cen_dist={dist_st if dist_st < dist_en else dist_en}"
 
+            # 7 columns for indels
             print(
                 s.ctg,
                 st,

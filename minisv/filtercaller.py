@@ -17,11 +17,16 @@ def parse_readids(tsv):
 
 
 def parse_msvasm(msvasm):
+    
     with gzip.open(msvasm) as gzip_file:
         read_ids = []
         for line in gzip_file:
             line = line.strip().split()
-            read_ids.append(line[5].decode('utf-8'))
+            is_bp = False
+            if re.match(r"[><]", line[2].decode('utf-8')):
+                is_bp = True
+            read_col_info = 5 if is_bp else 3
+            read_ids.append(line[read_col_info].decode('utf-8'))
 
     read_ids = set(read_ids)
     return read_ids
@@ -43,12 +48,17 @@ def classify_sv_len(svlen=0):
     return sv_len_tag
 
 
-def call_filterseverus(severusvcf, readidtsv, msvasm, outstat, asm_count_cutoff=2):
+def call_filterseverus(severusvcf, readidtsv, msvasm, outstat, consensus_sv_ids, asm_count_cutoff=2):
     parsed_id_dict = parse_readids(readidtsv)
     read_ids = parse_msvasm(msvasm)
 
+    consensus_ids = []
+    with open(consensus_sv_ids) as inf:
+        for line in inf:
+            consensus_ids.append(re.sub("_[12]", "", line.strip()))
+
     outf = open(outstat, 'w')
-    outf.write("svlen\tsvid\tDV\tread_name_number\tasm_support\n")
+    outf.write("svlen\tsvlen_range\tsvid\tis_consensus\tDV\tread_name_number\tasm_support\n")
     vcf_svids = []
     inconsistent_read_num = 0
     total = 0
@@ -66,7 +76,7 @@ def call_filterseverus(severusvcf, readidtsv, msvasm, outstat, asm_count_cutoff=
                  if info_field.startswith('SVLEN='):
                      svlen = int(info_field.replace('SVLEN=', ''))
 
-            sv_len_tag = classify_sv_len(svlen)
+            sv_len_tag = classify_sv_len(abs(svlen))
             
             ## Severus FORMAT column: GT:GQ:VAF:hVAF:DR:DV
             svid = elements[2]
@@ -92,8 +102,8 @@ def call_filterseverus(severusvcf, readidtsv, msvasm, outstat, asm_count_cutoff=
                 continue
 
             ## SVLEN, SVID, DV total tumor SV reads, read TSV file tumor SV read num, asm supported SV
-            outf.write('\t'.join([sv_len_tag, svid, form_list[-1], str(len(set(parsed_id_dict[svid]))), str(len(set(parsed_id_dict[svid]) & read_ids))])+'\n')
-
+            if sv_len_tag != '<100bp':
+                outf.write('\t'.join([str(svlen), sv_len_tag, svid, str(svid in consensus_ids), form_list[-1], str(len(set(parsed_id_dict[svid]))), str(len(set(parsed_id_dict[svid]) & read_ids))])+'\n')
 
     assert set(vcf_svids).issubset(set(parsed_id_dict.keys()))
     #print(total, inconsistent_read_num)
@@ -107,7 +117,7 @@ def call_filtersnf(snfvcfgz, msvasm, outstat, asm_count_cutoff=2):
     read_ids = parse_msvasm(msvasm)
 
     outf = open(outstat, 'w')
-    outf.write("svlen\tsupport\tsvid\tread_name_number\tDV\tasm_support\n")
+    outf.write("svlen\tsvlen_range\tsupport\tsvid\tread_name_number\tDV\tasm_support\n")
     with gzip.open(snfvcfgz) as inf:
         for line in inf:
             line = line.decode('utf-8')
@@ -132,7 +142,7 @@ def call_filtersnf(snfvcfgz, msvasm, outstat, asm_count_cutoff=2):
             for info_field in info:
                  if info_field.startswith('SVLEN='):
                      svlen = int(info_field.replace('SVLEN=', ''))
-            sv_len_tag = classify_sv_len(svlen)
+            sv_len_tag = classify_sv_len(abs(svlen))
 
             for info_field in info:
                  if info_field.startswith('RNAMES'):
@@ -145,7 +155,8 @@ def call_filtersnf(snfvcfgz, msvasm, outstat, asm_count_cutoff=2):
                    ##assert len(set(snf_reads)) == int(tumor_form_list[-3]) + int(tumor_form_list[-2]) + int(normal_form_list[-2]) + int(normal_form_list[-3]) 
                    if int(normal_form_list[i]) == 0 and int(tumor_form_list[i]) >= asm_count_cutoff:
                        # SVID, support, svid, read name number, DV, asm supported reads
-                       outf.write('\t'.join([sv_len_tag, support, svid, str(len(set(snf_reads))), tumor_form_list[-2], str(len(read_ids & set(snf_reads)))])+'\n')
+                       if sv_len_tag != '<100bp':
+                           outf.write('\t'.join([str(svlen), sv_len_tag, support, svid, str(len(set(snf_reads))), tumor_form_list[-2], str(len(read_ids & set(snf_reads)))])+'\n')
                        # if there is more than 2 SVs with self-assembly support, output the SVs
                        if len(read_ids & set(snf_reads)) >= asm_count_cutoff:
                            print(line.strip())
@@ -153,26 +164,31 @@ def call_filtersnf(snfvcfgz, msvasm, outstat, asm_count_cutoff=2):
 
 
 def call_filtermsv(msvtg, msvasm, outstat, asm_count_cutoff=2):
+
     read_ids = parse_msvasm(msvasm)
 
     outf = open(outstat, 'w')
-    outf.write("svlen\tread_name_number\tasm_support\n")
+    outf.write("svlen\tsvlen_range\tread_name_number\tasm_support\n")
+    msv_all_reads = []
     with open(msvtg) as inf:
         for line in inf:
             elements = line.strip().split()
             info = elements[-1].split(';')
             svlen = 0
+            msv_reads = []
 
             for info_field in info:
-                 print(info_field)
                  if info_field.startswith('reads='):
                      msv_reads = info_field.replace('reads=', '').split(',')
                  if info_field.startswith('SVLEN='):
                      svlen = int(info_field.replace('SVLEN=', ''))
+            msv_all_reads += msv_reads
 
-            sv_len_tag = classify_sv_len(svlen)
-            # SVID, support, svid, read name number, DV, asm supported reads
-            outf.write('\t'.join([sv_len_tag, str(len(set(msv_reads))), str(len(read_ids & set(msv_reads)))])+'\n')
+            sv_len_tag = classify_sv_len(abs(svlen))
+            if sv_len_tag != '<100bp':
+                 # SVID, support, svid, read name number, DV, asm supported reads
+                 outf.write('\t'.join([str(svlen), sv_len_tag, str(len(set(msv_reads))), str(len(read_ids & set(msv_reads)))])+'\n')
             if len(read_ids & set(msv_reads)) >= asm_count_cutoff:
                  print(line.strip())
+    ##assert set(msv_all_reads).issubset(read_ids)
     outf.close()

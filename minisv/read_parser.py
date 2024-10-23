@@ -3,6 +3,7 @@ from typing import Optional
 
 from .breakpoint import break_end_coord, get_breakpoint
 from .indel import get_indel
+import gzip
 
 
 @dataclass
@@ -37,8 +38,10 @@ def load_reads(input_file, opt):
     NOTE: This function is a generator. The PAF/GAF file already outputs sorted reads by names.
     """
     z = []
-    with open(input_file, "r") as input_file_handler:
+    lineno = 0
+    with gzip.open(input_file, "rt") as input_file_handler:
         for line in input_file_handler:
+            lineno += 1
             t = line.strip().split("\t")
             if len(t) < 11:
                 continue

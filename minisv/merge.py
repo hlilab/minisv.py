@@ -27,9 +27,9 @@ class svinfo:
     strand: Optional[str] = None
     is_bp: bool = False
     info: Optional[str] = None
-    SVTYPE: Optional[str] = None
+    SVTYPE: Optional[str] = ""
     source: Optional[str] = None
-    SVLEN: Optional[int] = None
+    SVLEN: Optional[int] = 0
     cen_dist: Optional[int] = None
     cen_overlap: Optional[int] = None
     tsd_len: Optional[int] = None
@@ -37,6 +37,9 @@ class svinfo:
     sv_region: Optional[str] = None
     name: Optional[str] = None
     vaf: Optional[float] = None
+    inv: Optional[bool] = False
+    count: Optional[int] = 0
+    svid: Optional[str] = ""
 
 
 @dataclass
@@ -49,6 +52,7 @@ class svobj:
 
 
 # NOTE: do we merge this with the eval function
+# only for minisv gsv file
 def parse_sv(t):
     v = svinfo(
         ctg=t[0],
@@ -216,7 +220,6 @@ def same_sv(opt, v, w):
             return False
 
     # pos differ too much
-    # NOTE: clear
     if abs(v.pos - w.pos) > opt.win_size:
         return False
 
@@ -241,7 +244,7 @@ def same_sv(opt, v, w):
         # NOTE: is this testing sequence identities?
         if abs(vl - wl) > 0.5 * (vl + wl) * opt.max_diff:
             return False
-    # NOTE: what does this mean: TODO: probably we don't want to check tsd_len as it may be cut short by a sequencing error
+
     return True
 
 
@@ -250,9 +253,7 @@ def write_sv(opt, s):
     if len(s) == 0:
         return
 
-    # NOTE: what is this used for?
-    #       are we always picking the zero index
-    #       this is for selecting the median sv from a set of overlapped svs
+    # NOTE: this is for selecting the median position sv from a set of overlapped svs
     v = s[len(s) >> 1]
 
     # filter by centromere distance
@@ -268,7 +269,6 @@ def write_sv(opt, s):
         if s[i].tsd_len is not None and s[i].polyA_len is not None:
             # NOTE: why choose minimum length between TSD and polyA
             #       instead of filtering either one separately
-            # NOTE: tsd_len in mgutil is not converted to number
             rt_len_arr.append(
                 int(s[i].tsd_len)
                 if int(s[i].tsd_len) < abs(int(s[i].polyA_len))
@@ -276,7 +276,7 @@ def write_sv(opt, s):
             )
 
     if len(rt_len_arr) > 0:
-        # NOTE: not sure this index operation
+        # NOTE: choose the medium pos RT length 
         rt_len = rt_len_arr[len(rt_len_arr) >> 1]
 
     # count

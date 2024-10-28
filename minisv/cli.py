@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 
 import re
+import gzip
 import sys
 from dataclasses import dataclass
 from typing import Optional
@@ -50,15 +51,27 @@ class mergeopt:
 @dataclass
 class EvalOpt:
     min_len: int = 100
+    min_count: int = 2
     read_len_ratio: float = 0.8
     win_size: int = 500
     min_len_ratio: float = 0.6
     dbg: bool = False
     print_err: bool = False
+    print_all: bool = False
     bed: Optional[str] = None
     min_vaf: float = 0
     ignore_flt: bool = False
     check_gt: bool = False
+    merge: bool = False
+
+
+@dataclass
+class svisec:
+    type: str = ""
+    len: int = 0
+    st: int = 0
+    en: int = 0
+    flag: int = 0
 
 
 @click.group(help="minisv tool commands")
@@ -336,10 +349,11 @@ def parse_centromere(b, cen):
     type=int,
     help="min min(TSD_len,polyA_len) to tag a candidate RT",
 )
-@click.option("-rr", required=False, default=1, type=int, help="minimum count for RT")
+@click.option("-R", "--rt", required=False, default=1, type=int, help="minimum count for RT")
 @click.option("-a", required=False, default=100, type=int, help="maximum allele number")
 @click.option(
-    "-cc",
+    "-C",
+    "--allelecount",
     required=False,
     default=500,
     type=int,
@@ -351,10 +365,10 @@ def parse_centromere(b, cen):
     default="500k",
     type=str,
     help="minimum distance to centromere",
-)  # NOTE: in mgutils, this is forced to be int
+)
 @click.argument("input", type=click.File("r"), required=True, nargs=1)
 def merge(
-    w: int, d: float, c: int, s: int, r: int, rr: int, a: int, cc: int, e: str, input
+    w: int, d: float, c: int, s: int, r: int, rt: int, a: int, allelecount: int, e: str, input
 ):
     """Usage: sort -k 1,1 -k2,2n sv.bed | gafcall merge [options] -"""
     from .merge import merge_sv
@@ -363,32 +377,24 @@ def merge(
         win_size=w,
         max_diff=d,
         min_cnt=c,
-        min_cnt_rt=rr,
+        min_cnt_rt=rt,
         min_cen_dist=parseNum(e),
         min_rt_len=r,
         min_cnt_strand=s,
         max_allele=a,
-        max_check=cc,
+        max_check=allelecount,
     )
     merge_sv(options, input)
 
 
 @cli.command()
+@click.option("-d", is_flag=True, help="verbose option for debug")
+@click.option("-b", type=click.Path(exists=True), help="bed to restrict the comparison")
+@click.option(
+    "-l", "--svlen", required=False, default="100", type=str, help="minimum sv length"
+)
+@click.option("-c", required=False, default=0, type=int, help="minimum sv counts")
 @click.option("-w", required=False, default="500", type=str, help="window size")
-@click.option(
-    "-svlen", required=False, default="100", type=str, help="sv minimum length"
-)
-@click.option(
-    "-v", required=False, default=0, type=float, help="ignore VAF below FLOAT"
-)
-@click.option("-c", required=False, default=3, type=int, help="minimum sv counts")
-@click.option(
-    "-lenratio",
-    required=False,
-    default=0.6,
-    type=float,
-    help="minimum length ratio similarity between read SV and truthset SV",
-)
 @click.option(
     "-r",
     required=False,
@@ -396,24 +402,41 @@ def merge(
     type=float,
     help="read SVs longer than svlen*FLOAT",
 )
-@click.option("-b", type=click.Path(exists=True), help="bed to restrict the comparison")
-@click.option("-d", is_flag=True, help="verbose option for debug")
+@click.option(
+    "-m",
+    required=False,
+    default=0.6,
+    type=float,
+    help="minimum length ratio similarity between read SV and truthset SV",
+)
+@click.option(
+    "-M",
+    "--merge",
+    is_flag=True,
+    help="merge SV as consensus truth"
+)
+@click.option(
+    "-v", required=False, default=0, type=float, help="ignore VAF below FLOAT"
+)
+@click.option("-F", "--ignoreflt", is_flag=True, help="ignore VCF filter")
+@click.option("-G", "--gt", is_flag=True, help="check GT")
 @click.option("-e", is_flag=True, help="print errors")
-@click.option("-g", is_flag=True, help="check GT")
-@click.option("-f", is_flag=True, help="ignore VCF filter")
+@click.option("-a", is_flag=True, help="print all")
 @click.argument("filename", nargs=-1)
 def eval(
     w: str,
     svlen: str,
     c: int,
     r: float,
-    lenratio: float,
+    m: float,
     d: bool,
     e: bool,
+    a: bool,
     v: float,
     b,
-    g,
-    f,
+    gt,
+    ignoreflt,
+    merge,
     filename,
 ):
     """Evaluation of SV calls"""
@@ -421,17 +444,93 @@ def eval(
 
     options = EvalOpt(
         min_len=parseNum(svlen),
+        min_count=int(c),
         win_size=parseNum(w),
         read_len_ratio=r,
-        min_len_ratio=lenratio,  # NOTE: the option are not input
+        min_len_ratio=m,  # NOTE: the option are not input
         dbg=d,
         bed=gc_read_bed(b) if b is not None else None,
         print_err=e,
+        print_all=a,
         min_vaf=v,
-        check_gt=g,
-        ignore_flt=f,
+        check_gt=gt,
+        merge=merge,
+        ignore_flt=ignoreflt,
     )
     eval(filename, options)
+
+
+@cli.command()
+@click.option("-d", is_flag=True, help="verbose option for debug")
+@click.option("-b", type=click.Path(exists=True), help="bed to restrict the comparison")
+@click.option(
+    "-l", "--svlen", required=False, default="100", type=str, help="minimum sv length"
+)
+@click.option("-c", required=False, default=0, type=int, help="minimum sv counts")
+@click.option("-w", required=False, default="500", type=str, help="window size")
+@click.option(
+    "-r",
+    required=False,
+    default=0.8,  # NOTE: in js this might be a bug, these ratio name looks confusing
+    type=float,
+    help="read SVs longer than svlen*FLOAT",
+)
+@click.option(
+    "-m",
+    required=False,
+    default=0.6,
+    type=float,
+    help="minimum length ratio similarity between read SV and truthset SV",
+)
+@click.option(
+    "-M",
+    "--merge",
+    is_flag=True,
+    help="merge SV as consensus truth"
+)
+@click.option(
+    "-v", required=False, default=0, type=float, help="ignore VAF below FLOAT"
+)
+@click.option("-F", "--ignoreflt", is_flag=True, help="ignore VCF filter")
+@click.option("-G", "--gt", is_flag=True, help="check GT")
+@click.option("-e", is_flag=True, help="print errors")
+@click.option("-a", is_flag=True, help="print all")
+@click.argument("filename", nargs=-1)
+def annot(
+    w: str,
+    svlen: str,
+    c: int,
+    r: float,
+    m: float,
+    d: bool,
+    e: bool,
+    a: bool,
+    v: float,
+    b,
+    gt,
+    ignoreflt,
+    merge,
+    filename,
+):
+    """Evaluation of SV calls"""
+    from .annot import annot
+
+    options = EvalOpt(
+        min_len=parseNum(svlen),
+        min_count=int(c),
+        win_size=parseNum(w),
+        read_len_ratio=r,
+        min_len_ratio=m,  # NOTE: the option are not input
+        dbg=d,
+        bed=gc_read_bed(b) if b is not None else None,
+        print_err=e,
+        print_all=a,
+        min_vaf=v,
+        check_gt=gt,
+        merge=merge,
+        ignore_flt=ignoreflt,
+    )
+    annot(filename, options)
 
 
 @dataclass
@@ -461,74 +560,99 @@ def view(minlen: int, ignoreflt: bool, gt: bool, c: bool, b: str, input):
     gc_cmd_view(opt, input)
 
 
-@cli.command()
+@cli.command(context_settings={"ignore_unknown_options": True})
 @click.option(
-    "-minlen", required=False, default=100, type=int, help="minimum sv length"
+    "-w", required=False, default=1000, type=int, help="window size"
 )
-@click.option("-ignoreflt", is_flag=True, help="ignore FILTER field in VCF")
-@click.option("-gt", is_flag=True, help="check GT in VCF")
-@click.option("-c", is_flag=True, help="count 20kb,100kb,1Mb and translocations")
-@click.option(
-    "-b", required=False, type=click.Path(exists=True), help="restricted bed file"
-)
-@click.argument("filter_input_gsv", type=click.File("r"), default=sys.stdin, nargs=1)
-@click.argument("output_gsv", type=click.File("r"), default=sys.stdin, nargs=1)
-def join(
-    minlen: int,
-    ignoreflt: bool,
-    gt: bool,
-    c: bool,
-    b: str,
-    filter_input_gsv,
-    output_gsv,
-):
-    """Usage: gafcall join filter.gsv out.gsv"""
-
-    h = {}
-
+@click.argument("gsvs", type=click.Path(), nargs=-1)
+def isec(w, gsvs):
+    """Usage: minisv isec base.gsv alt.gsv [...]"""
     def get_type(t, col_info):
         info = t[col_info]
-        m = re.findall(r"\bSVTYPE=([^\s;])+", info)
+        m = re.findall(r"\b(SVTYPE|SVLEN|qoff_l|qoff_r)=([^\s;]+)", info)
 
-        if len(m) > 0:
-            if m[0] == "INS" or m[0] == "DUP":
-                return 1
-            elif m[0] == "DEL":
-                return 2
-            elif m[0] == "INV":
-                return 4
-            elif m[0] == "BND" and col_info == 8 and t[0] != t[3]:
-                return 8
-        return 0
+        type = None
+        qoff_l = -1
+        qoff_r = -1
+        flag = 0
+        len = 0
 
+        for element_type, element_val in m:
+            if element_type == "SVTYPE":
+                type = element_val
+            elif element_type == "SVLEN":
+                len = int(element_val)
+            elif element_type == "qoff_l":
+                qoff_l = int(element_val)
+            elif element_type == "qoff_r":
+                qoff_r = int(element_val)
+
+        if type is None or qoff_l < 0 or qoff_r < 0:
+            raise Exception("missing information")
+        # print(type, len, qoff_l, qoff_r)
+
+        # insertion
+        if type == "INS" or type == "DUP":
+            flag = 1
+        # deletion
+        elif type == "DEL":
+            flag = 2
+        # inversion
+        elif type == "INV":
+            flag = 4
+        # translocation
+        elif type == "BND" and col_info == 8 and t[0] != t[3]:
+            flag = 8
+        return svisec(type = type, len = len, st = qoff_l, en = qoff_r, flag = flag)
+
+    g = []
     # file as filter
-    for line in filter_input_gsv:
-        t = line.strip().split()
-        if re.match(r"[><]", t[2]):
-            col_info = 8
-        else:
-            col_info = 6
-        name = t[col_info - 3]
-        if name not in h:
-            h[name] = 0
-        h[name] |= get_type(t, col_info)
+    for gsv in gsvs[1:]:
+        h = {}
+        with gzip.open(gsv, 'rt') as gsv_file:
+            for line in gsv_file:
+                t = line.strip().split("\t")
+                if re.match(r"[><]", t[2]):
+                    col_info = 8
+                else:
+                    col_info = 6
+                name = t[col_info - 3]
+                if name not in h:
+                    h[name] = []
+                h[name].append(get_type(t, col_info))
+        g.append(h)
+    # g: [{readname:[svtype_dict]}, {}]
 
     # file to be filtered
-    for line in output_gsv:
-        t = line.strip().split()
-        if re.match(r"[><]", t[2]):
-            col_info = 8
-        else:
-            col_info = 6
-        name = t[col_info - 3]
-        if name not in h:
-            continue
-        type = get_type(t, col_info)
-        # NOTE: h[name] & 8 is redundant?
-        #       shall we check chromosome?
-        # TODO: add read query positions
-        if type == 0 or (h[name] & type) or (h[name] & 8):
-            print(line.strip())
+    with gzip.open(gsvs[0], 'rt') as base_gsv:
+        for line in base_gsv:
+            t = line.strip().split("\t")
+            if re.match(r"[><]", t[2]):
+                col_info = 8
+            else:
+                col_info = 6
+            name = t[col_info - 3]
+            x = get_type(t, col_info)
+            n_found = 0
+
+            for h in g:
+                if name not in h:
+                    break
+
+                a = h[name]
+                found = False
+                for j in range(len(a)):
+                    if x.st - w < a[j].en and a[j].st < x.en + w:
+                        # NOTE: why a[i].flag & 8?? what if base sv is not translocation
+                        if x.flag == 0 or (x.flag & a[j].flag) or (a[j].flag & 8):
+                            found = True
+                if not found:
+                    break
+                n_found += 1
+
+            if n_found == len(g):
+                print(line.strip())
+                    
 
 
 @cli.command()

@@ -1,23 +1,89 @@
 import gzip
+from .regex import re_info
+import math
 import warnings
 import re
+from .util import is_gzipped, is_vcf
+from .eval import gc_parse_sv, iit_overlap
+from .type import get_type, simple_type
 
 
+def parse_readids(file_path):
+    tsv = file_path
+    read_id_dict = {}
+    caller = 'snf' if is_vcf(tsv) or is_gzipped(file_path) else ''
 
-def parse_readids(tsv):
-    severus_id_dict = {}
-    with open(tsv) as inf:
-        for line in inf:
-            if line.startswith("#SV_ID"):
+    if is_gzipped(file_path):
+        f = gzip.open(file_path, 'rt')
+    else:
+        f = open(file_path)
+
+    line_no = 0
+    for line in f:
+        line_no += 1
+        if caller == 'snf':
+            if line.startswith("#"):
                 continue
+        if line.startswith("#SV_ID"):
+            caller = 'severus'
+            continue
+        if line.startswith('VARIANT_ID'):
+            caller = 'savana'
+            continue
+        if line.startswith('chr') and line.strip()[-1] in ['+', '-']:
+            caller = 'nanomonsv'
+        if 'avg_mapq' in line:
+            caller = 'msv'
+
+        if caller == 'severus':
             line = line.strip().split(',')
-            # only query the tumor SVs supported reads from the read id tsv file
-            severus_id_dict[line[0]] = line[1].replace("\"", "").split('; ')
-    return severus_id_dict
+        elif caller == 'savana':
+            line = line.strip().split('\t')
+        elif caller == 'nanomonsv':
+            line = line.strip().split('\t')
+        elif caller == 'snf':
+            line = line.strip().split('\t')
+        elif caller == 'msv':
+            line = line.strip().split('\t')
+        else:
+            raise Exception("not support yet")
+
+        # only query the tumor SVs supported reads from the read id tsv file
+        if caller == 'severus':
+            read_id_dict[line[0]] = line[1].replace("\"", "").split('; ')
+        elif caller == 'savana':
+            read_id_dict[line[0]] = line[1].replace("\"", "").split(',')
+        elif caller == 'nanomonsv':
+            read_id_dict[line[7]] = read_id_dict.get(line[7], []) + [line[8]]
+        elif caller == 'snf':
+            info = re_info.findall(line[7])
+            snf_reads = []
+            for info_field, info_val in info:
+                 if info_field.startswith('RNAMES'):
+                     snf_reads = info_val.split(',')
+                     break
+            read_id_dict[line[2]] = snf_reads
+        elif caller == 'msv':
+            is_bp = False
+            if re.match(r"[><]", line[2]):
+                is_bp = True
+            col_info = 8 if is_bp else 6
+            info = line[col_info]
+            info = re_info.findall(info)
+            msv_reads = []
+            for info_field, info_val in info:
+                 if info_field.startswith('reads'):
+                     msv_reads = info_val.split(',')
+                     break
+            # msv use line number as sv ids
+            read_id_dict[str(line_no)] = msv_reads
+        else:
+            raise Exception("not support yet")
+    f.close()
+    return read_id_dict
 
 
 def parse_msvasm(msvasm):
-    
     with gzip.open(msvasm) as gzip_file:
         read_ids = []
         for line in gzip_file:
@@ -25,11 +91,30 @@ def parse_msvasm(msvasm):
             is_bp = False
             if re.match(r"[><]", line[2].decode('utf-8')):
                 is_bp = True
-            read_col_info = 5 if is_bp else 3
-            read_ids.append(line[read_col_info].decode('utf-8'))
+            col_info = 8 if is_bp else 6
+            read_ids.append(line[col_info-3].decode('utf-8'))
 
     read_ids = set(read_ids)
     return read_ids
+
+
+def parse_msvasm_withtype(msvasm):
+
+    h = {}
+    with gzip.open(msvasm, 'rt') as gzip_file:
+        read_ids = []
+        for line in gzip_file:
+            t = line.strip().split('\t')
+            is_bp = False
+            if re.match(r"[><]", t[2]):
+                is_bp = True
+
+            col_info = 8 if is_bp else 6
+            name = t[col_info-3]
+            if name not in h:
+                h[name] = []
+            h[name].append(get_type(t, col_info))
+    return h
 
 
 def classify_sv_len(svlen=0):
@@ -48,10 +133,160 @@ def classify_sv_len(svlen=0):
     return sv_len_tag
 
 
+def parse_svid(svid):
+    svid = str(svid)
+    # remove _1 and _2 for paired SV event
+    # severus
+    if svid.startswith('severus'):
+        query_svid = re.sub("_[12]", "", svid)
+    # savana
+    elif svid.startswith("ID_"):
+        query_svid = re.sub(r"(ID_\d+)_([1,2])", "\\1", svid)
+    # nanomonsv
+    elif svid.startswith("r_") or svid.startswith("i_") or svid.startswith("d_"):
+        query_svid = re.sub(r"(r_\d+)_([0,1])", "\\1", svid)
+    # sniffles2
+    elif svid.startswith("Sniffles2"):
+        query_svid = svid
+    else:
+        query_svid = svid
+    return query_svid
+        #raise Exception("not support yet")
+
+def othercaller_filterasm(vcf_file, opt, readidtsv, msvasm, outstat, consensus_sv_ids):
+    """
+    vcf: input vcf, support Severus, Sniffles, nanomonsv, and savana
+    consensus_sv_ids: consensus SV ids from minisv annot
+    """
+    # NOTE: why some germline SV disappear and no somatic SV
+    parsed_id_dict = parse_readids(readidtsv)
+    read_ids = parse_msvasm(msvasm)
+    read_ids_withtype = parse_msvasm_withtype(msvasm)
+
+    min_read_len = math.floor(opt.min_len * opt.read_len_ratio + 0.499)
+    vcf = gc_parse_sv(vcf_file, min_read_len, opt.min_count, opt.ignore_flt, opt.check_gt)
+
+    consensus_ids = []
+    if consensus_sv_ids != "":
+        with open(consensus_sv_ids) as inf:
+            for line in inf:
+                consensus_ids.append(re.sub("_[12]", "", line.strip()))
+
+    is_consensus = True
+    outf = open(outstat, 'w')
+    outf.write("svlen\tsvlen_range\tsvid\tis_consensus\ttype\tcontig1\tpos1\tori\tcontig2\tpos2\tasm_support\tasm_support_onlyreadname\tread_name_number\n")
+
+    # first vcf is to be annotated
+    all_ids = []
+    # msv sv id record
+    for i in range(len(vcf)):
+ 
+        t = vcf[i]
+
+        # Not long enough for non-BND type
+        # NOTE: here use 100bp as the default length instead of 80
+        if t.SVTYPE != "BND" and abs(t.SVLEN) < opt.min_len:
+            continue
+
+        if t.SVTYPE == "BND" and t.ctg == t.ctg2 and abs(t.SVLEN) < opt.min_len:
+            continue
+
+        if t.count > 0 and t.count < opt.min_count:
+            continue
+
+        # filter by VAF
+        if t.vaf is not None and t.vaf < opt.min_vaf:
+            continue
+
+        if opt.bed is not None:
+            if t.ctg not in opt.bed or t.ctg2 not in opt.bed:
+                continue
+            if len(iit_overlap(opt.bed[t.ctg], t.pos, t.pos + 1)) == 0:
+                continue
+            if len(iit_overlap(opt.bed[t.ctg2], t.pos2, t.pos2 + 1)) == 0:
+                continue
+
+        query_svid = str(parse_svid(t.svid))
+        
+        if len(consensus_ids) > 0:
+            is_consensus = query_svid in consensus_ids
+        assert query_svid in parsed_id_dict
+
+        ol_readn = set(parsed_id_dict[query_svid]) & read_ids
+
+        read_num_wt_type = 0
+        t_type_flag = simple_type(t.SVTYPE, t.ctg, t.ctg2)
+        for read_i in ol_readn:
+            assert read_i in read_ids_withtype
+
+            # one read with multiple sv type
+            # read_ids_withtype: asm sv results
+            for sv_j in read_ids_withtype[read_i]:
+                # translocation
+                if t_type_flag == 8 and sv_j.flag == 8:
+                    read_num_wt_type += 1
+                    break
+
+                # 1. >100k(cutoff) DUP/INS/DEL/INV can be translocation in self-assembly
+                if t_type_flag in [1, 2, 4] and abs(t.SVLEN) >= 1e5 and sv_j.flag == 8: 
+                    read_num_wt_type += 1
+                    break
+
+                # 2. ~1K INS can be transformed to be 100bp in self-assembly
+                #    reduce min_len_ratio to 0.3
+                len_check = (
+                    abs(sv_j.len) >= abs(t.SVLEN) * opt.min_len_ratio
+                    and abs(t.SVLEN) >= abs(sv_j.len) * opt.min_len_ratio
+                )
+                #debug INS
+                #if t.svid == 'severus_INS16922':
+                #     print(t.svid, read_i, sv_j.flag, sv_j.len, t.SVLEN, t.SVTYPE, len_check, abs(t.SVLEN) * opt.min_len_ratio, abs(sv_j.len) * opt.min_len_ratio, opt.min_len_ratio)
+                #if t.svid == 'severus_INS12685':
+                #     print(t.svid, read_i, sv_j.flag, sv_j.len, t.SVLEN, t.SVTYPE, len_check, abs(t.SVLEN) * opt.min_len_ratio, abs(sv_j.len) * opt.min_len_ratio, opt.min_len_ratio)
+                #if t.svid == 'severus_INS17052':
+                #     print(t.svid, read_i, sv_j.flag, sv_j.len, t.SVLEN, t.SVTYPE, len_check, abs(t.SVLEN) * opt.min_len_ratio, abs(sv_j.len) * opt.min_len_ratio, opt.min_len_ratio)
+                # strict sv type and length check
+                if (t_type_flag & sv_j.flag) and len_check:
+                     read_num_wt_type += 1
+                     break
+
+        filt_cnt = len(ol_readn)
+
+        if opt.print_all:
+            outf.write('\t'.join(map(str, [t.SVLEN, classify_sv_len(abs(t.SVLEN)), t.svid, is_consensus, t.SVTYPE, t.ctg, t.pos, t.ori, t.ctg2, t.pos2, 
+                       read_num_wt_type, filt_cnt, t.count]))+'\n')
+
+         # output sv ids in vcf or msv
+        if read_num_wt_type >= opt.min_count and filt_cnt >= opt.min_count and t.count >= opt.min_count:
+            all_ids.append(query_svid)
+
+    outf.close()
+
+    assert set(all_ids).issubset(set(parsed_id_dict.keys()))
+    ## output vcf format with sv ids above
+    if is_gzipped(vcf_file):
+        f = gzip.open(vcf_file, 'rt')
+    else:
+        f = open(vcf_file)
+    line_no = 0
+    for line in f:
+        line_no += 1
+        if line[0] == "#":
+            print(line.strip())
+            continue
+        if 'avg_mapq' in line: # MSV
+            query_svid = str(parse_svid(line_no))
+        else: # other caller
+            t = line.strip().split("\t")
+            query_svid = str(parse_svid(t[2]))
+        if query_svid in all_ids:
+            print(line.strip())
+    f.close()
+
+
 def call_filterseverus(severusvcf, readidtsv, msvasm, outstat, consensus_sv_ids, asm_count_cutoff=2):
     parsed_id_dict = parse_readids(readidtsv)
     read_ids = parse_msvasm(msvasm)
-
     consensus_ids = []
     with open(consensus_sv_ids) as inf:
         for line in inf:
@@ -106,7 +341,6 @@ def call_filterseverus(severusvcf, readidtsv, msvasm, outstat, consensus_sv_ids,
                 outf.write('\t'.join([str(svlen), sv_len_tag, svid, str(svid in consensus_ids), form_list[-1], str(len(set(parsed_id_dict[svid]))), str(len(set(parsed_id_dict[svid]) & read_ids))])+'\n')
 
     assert set(vcf_svids).issubset(set(parsed_id_dict.keys()))
-    #print(total, inconsistent_read_num)
     outf.close()
 
 

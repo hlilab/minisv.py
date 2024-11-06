@@ -384,7 +384,7 @@ def gc_cmd_view(opt, input):
 
     for j in range(len(input)):
         sv = gc_parse_sv(
-            parseNum(str(opt.min_read_len)), input[j], opt.ignore_flt, opt.check_gt
+            input[j], opt.min_read_len, opt.min_count, opt.ignore_flt, opt.check_gt
         )
         cnt = [0, 0, 0, 0]
         for i in range(len(sv)):

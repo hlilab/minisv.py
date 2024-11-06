@@ -6,7 +6,8 @@ from typing import Optional
 from .merge import svinfo
 from .regex import re_info
 from operator import itemgetter, attrgetter
-
+from .util import is_gzipped
+import gzip
 
 
 def eval(inputfiles, opt):
@@ -148,281 +149,318 @@ def gc_get_count_msv(count_info):
 def gc_parse_sv(file_path, min_read_len, min_count: int, ignore_flt: bool, check_gt: bool):
     sv = []
     ignore_id = {}
+    if is_gzipped(file_path):
+        f = gzip.open(file_path, 'rt')
+    else:
+        f = open(file_path)
 
-    with open(file_path) as f:
-        for line in f:
-            # skip vcf header lines
-            if line[0] == "#":
-                continue
+    line_no = 0
+    for line in f:
+        line_no += 1
+        # skip vcf header lines
+        if line[0] == "#":
+            continue
 
-            t = line.strip().split("\t")
-            # POS must be number
-            if re.match(r"^\d+", t[1]) is None:
-                continue
+        t = line.strip().split("\t")
+        # POS must be number
+        if re.match(r"^\d+", t[1]) is None:
+            continue
 
-            # start pos
-            t[1] = int(t[1])
+        # start pos
+        t[1] = int(t[1])
 
-            type = 0
-            info = None
-            inv  = False
+        type = 0
+        info = None
+        inv  = False
 
-            # different format use different columns for SV type
-            if re.match(r"^[><][><]$", t[2]):
-                col_info = 8
-                # breakpoint type
-                type = 3
-                info = t[col_info]
-            # VCF format
-            elif len(t) >= 8 and re.search(r";", t[7]):
-                # other caller VCF
-                type = 1
-                info = t[7]
-            elif re.match(r"^\d+$", t[2]) and re.search(r";", t[6]):
-                # INDEL type
-                col_info = 6
-                type = 2
-                info = t[col_info]
+        # different format use different columns for SV type
+        if re.match(r"^[><][><]$", t[2]):
+            col_info = 8
+            # breakpoint type
+            type = 3
+            info = t[col_info]
+        # VCF format
+        elif len(t) >= 8 and re.search(r";", t[7]):
+            # other caller VCF
+            type = 1
+            info = t[7]
+        elif re.match(r"^\d+$", t[2]) and re.search(r";", t[6]):
+            # INDEL type
+            col_info = 6
+            type = 2
+            info = t[col_info]
 
-            if type == 0:
-                raise Exception("No type available...")
-                continue
+        if type == 0:
+            raise Exception("No type available...")
+            continue
 
-            svtype = None
-            svlen = 0
-            cnt_tot = -1
+        svtype = None
+        svlen = 0
+        cnt_tot = -1
+        
+        m = re.findall(r"\bSVTYPE=([^\s;]+)", info)
+        if len(m) > 0:
+            svtype = m[0]
+
+        if svtype == "INV":
+            inv = True
             
-            m = re.findall(r"\bSVTYPE=([^\s;]+)", info)
+        m = re.findall(r"\bSVLEN=([^\s;]+)", info)
+        if len(m) > 0:
+            svlen = int(m[0])
+
+        # parse read count
+        # MSV
+        if type in [2, 3]:
+            regex = re.compile(r"\bcount=([^\s;]+)")
+            m = regex.findall(info)
             if len(m) > 0:
-                svtype = m[0]
+               cf, cr = gc_get_count_msv(m[0])
+               cnt_tot = cf + cr
+        # OTHER VCFs
+        elif type == 1:
+            cnt_tot = gc_get_count_vcf(t)
 
-            if svtype == "INV":
-                inv = True
-                
-            m = re.findall(r"\bSVLEN=([^\s;]+)", info)
-            if len(m) > 0:
-                svlen = int(m[0])
+        # COLO829 truth set do not have count info
+        # if cnt_tot <= 0:
+        #     continue
 
-            # parse read count
-            # MSV
-            if type in [2, 3]:
-                regex = re.compile(r"\bcount=([^\s;]+)")
-                m = regex.findall(info)
-                if len(m) > 0:
-                   cf, cr = gc_get_count_msv(m[0])
-                   cnt_tot = cf + cr
-            # OTHER VCFs
-            elif type == 1:
-                cnt_tot = gc_get_count_vcf(t)
+        if cnt_tot > 0 and cnt_tot < min_count:
+            continue
 
-            # COLO829 truth set do not have count info
-            # if cnt_tot <= 0:
-            #     continue
+        # Parse sv coordinate
+        # MSV BED-like line
+        # for INDEL
+        if type == 2:
+            t[2] = int(t[2])
+            if t[1] > t[2]:
+                raise Exception("incorrect BED format")
 
-            if cnt_tot > 0 and cnt_tot < min_count:
+            # NOTE: min_read_len is 80 instead of 100 here???
+            if abs(svlen) < min_read_len:
+                continue
+            # print(svtype, type, svlen, cnt_tot, min_read_len)
+            # raise Exception("Test...")
+            sv.append(
+                svinfo(
+                    ctg=t[0],
+                    pos=t[1],
+                    ctg2=t[0],
+                    pos2=t[2],
+                    ori=">>",
+                    SVTYPE=svtype,
+                    SVLEN=svlen,
+                    inv=inv,
+                    count=cnt_tot,
+                    vaf=1,  # MSV do not have VAF
+                    svid=str(line_no)
+                )
+            )
+        elif type == 3:
+            # breakpoint line
+            t[4] = int(t[4])
+
+            if t[0] == t[3] and abs(svlen) < min_read_len:
                 continue
 
-            # Parse sv coordinate
-            # MSV BED-like line
-            # for INDEL
-            if type == 2:
-                t[2] = int(t[2])
-                if t[1] > t[2]:
-                    raise Exception("incorrect BED format")
+            if t[0] == t[3] and (t[2] == "><" or t[2] == "<>"):
+                inv = True
 
-                # NOTE: min_read_len is 80 instead of 100 here???
-                if abs(svlen) < min_read_len:
-                    continue
-                # print(svtype, type, svlen, cnt_tot, min_read_len)
-                # raise Exception("Test...")
-                sv.append(
-                    svinfo(
-                        ctg=t[0],
-                        pos=t[1],
-                        ctg2=t[0],
-                        pos2=t[2],
-                        ori=">>",
-                        SVTYPE=svtype,
-                        SVLEN=svlen,
-                        inv=inv,
-                        count=cnt_tot,
-                        vaf=1,  # MSV do not have VAF
-                    )
+            # print(svtype, type, svlen, cnt_tot, min_read_len)
+            # raise Exception("Test...")
+
+            sv.append(
+                svinfo(
+                    ctg=t[0],
+                    pos=t[1],
+                    ctg2=t[3],
+                    pos2=t[4],
+                    ori=t[2],
+                    SVTYPE=svtype,
+                    SVLEN=svlen,
+                    inv=inv,
+                    count=cnt_tot,
+                    vaf=1, # MSV do not have VAF
+                    svid=str(line_no),
                 )
-            elif type == 3:
-                # breakpoint line
-                t[4] = int(t[4])
+            )
+        elif type == 1:
+            # VCF line
+            # VCF filter
+            # ignore filtered calls
+            if (not ignore_flt) and t[6] != "PASS" and t[6] != ".":
+                continue
 
-                if t[0] == t[3] and abs(svlen) < min_read_len:
-                    continue
+            # not a variant
+            if check_gt and len(t) >= 9 and re.match(r"^0[\/\|]0", t[9]):
+                continue
 
-                if t[0] == t[3] and (t[2] == "><" or t[2] == "<>"):
-                    inv = True
+            # reference allele
+            rlen = len(t[3])
+            en = t[1] + rlen - 1
 
-                # print(svtype, type, svlen, cnt_tot, min_read_len)
-                # raise Exception("Test...")
+            # initialize a sv info object
+            s = svinfo(ctg=t[0], pos=t[1] - 1, ctg2=t[0], pos2=en, ori=">>", 
+                       inv=inv, count=cnt_tot,
+                       svid=t[2], vaf=1)
 
-                sv.append(
-                    svinfo(
-                        ctg=t[0],
-                        pos=t[1],
-                        ctg2=t[3],
-                        pos2=t[4],
-                        ori=t[2],
-                        SVTYPE=svtype,
-                        SVLEN=svlen,
-                        inv=inv,
-                        count=cnt_tot,
-                        vaf=1, # MSV do not have VAF
-                    )
-                )
-            elif type == 1:
-                # VCF line
-                # VCF filter
-                # ignore filtered calls
-                if (not ignore_flt) and t[6] != "PASS" and t[6] != ".":
-                    continue
+            # need to improve the VAF parser
+            # parse_vaf()
+            # m = re.findall(r"\dVAF=([^\s;]+)", info)                
+            # if len(m) > 0:
+            #     s.vaf = float(m[0])
+            # raise Exception("test vcf")
 
-                # not a variant
-                if check_gt and len(t) >= 9 and re.match(r"^0[\/\|]0", t[9]):
-                    continue
+            # adjust sv length by allele sequences for indel
+            if re.match(r"^[A-Z,\*]+$", t[4]) and t[4] != "SV" and t[4] != "CSV":
 
-                # reference allele
-                rlen = len(t[3])
-                en = t[1] + rlen - 1
+                # assume full allele sequence;
+                # override SVTYPE/SVLEN even if present
+                # multiple alleles
+                alt = t[4].split(",")
+                for i in range(len(alt)):
+                    a = alt[i]
+                    # alt allele - reference allele
+                    length = len(a) - rlen
 
-                # initialize a sv info object
-                s = svinfo(ctg=t[0], pos=t[1] - 1, ctg2=t[0], pos2=en, ori=">>", 
-                           inv=inv, count=cnt_tot,
-                           svid=t[2], vaf=1)
+                    if abs(length) < min_read_len:
+                        continue
 
-                # need to improve the VAF parser
-                # parse_vaf()
-                # m = re.findall(r"\dVAF=([^\s;]+)", info)                
-                # if len(m) > 0:
-                #     s.vaf = float(m[0])
-                # raise Exception("test vcf")
+                    s.ori = ">>"
+                    s.SVLEN = length
+                    if length < 0:
+                        s.SVTYPE = "DEL"
+                    else:
+                        s.SVTYPE = "INS"
+                    sv.append(s)
+            # other SV type encoding
+            else:
+                if t[2] != ".":
+                    # ignore previously visited ID
+                    if t[2] in ignore_id:
+                        continue
+                    ignore_id[t[2]] = 1
 
-                # adjust sv length by allele sequences for indel
-                if re.match(r"^[A-Z,\*]+$", t[4]) and t[4] != "SV" and t[4] != "CSV":
+                # Severus/nanomonsv/Savana has MATEID
+                # NOTE: \b is not correct,
+                #       need to be ;
+                m = re.findall(r"\b(MATE_ID|MATEID)=([^\s;]+)", info)
+                if len(m) > 0:
+                    ignore_id[m[0][1]] = 1
 
-                    # assume full allele sequence;
-                    # override SVTYPE/SVLEN even if present
-                    # multiple alleles
-                    alt = t[4].split(",")
-                    for i in range(len(alt)):
-                        a = alt[i]
-                        # alt allele - reference allele
-                        length = len(a) - rlen
+                if svtype is None:
+                    # we don't infer SVTYPE from breakpoint for existing data
+                    raise Exception(f"cannot determine SVTYPE {t}")
 
-                        if abs(length) < min_read_len:
-                            continue
-
-                        s.ori = ">>"
-                        s.SVLEN = length
-                        if length < 0:
-                            s.SVTYPE = "DEL"
-                        else:
-                            s.SVTYPE = "INS"
-                        sv.append(s)
-                # other SV type encoding
-                else:
-                    if t[2] != ".":
-                        # ignore previously visited ID
-                        if t[2] in ignore_id:
-                            continue
-                        ignore_id[t[2]] = 1
-
-                    # Severus/nanomonsv/Savana has MATEID
-                    # NOTE: \b is not correct,
-                    #       need to be ;
-                    m = re.findall(r"\b(MATE_ID|MATEID)=([^\s;]+)", info)
+                s.SVTYPE = svtype
+                # patch nanomonsv insertion size
+                if svtype == "INS":
+                    m = re.findall(r"SVINSLEN=([^\s;]+)", info)
                     if len(m) > 0:
-                        ignore_id[m[0][1]] = 1
+                        svlen = int(m[0])
 
-                    if svtype is None:
-                        # we don't infer SVTYPE from breakpoint for existing data
-                        raise Exception(f"cannot determine SVTYPE {t}")
+                if svtype != "BND" and abs(svlen) < min_read_len:
+                    continue  # too short
 
-                    s.SVTYPE = svtype
-                    if svtype != "BND" and abs(svlen) < min_read_len:
-                        continue  # too short
+                # correct Deletion SVLEN consistently
+                # severus has DEL >0 length
+                if svtype == "DEL" and svlen > 0:
+                    svlen = -svlen
+                s.SVLEN = svlen
 
-                    # correct Deletion SVLEN consistently
-                    # severus has DEL >0 length
-                    if svtype == "DEL" and svlen > 0:
-                        svlen = -svlen
+                # NOTE: \b not right, use ;
+                m = re.findall(r"\bEND=(\d+)", info)
+                if len(m) > 0:
+                    s.pos2 = int(m[0])
+                elif rlen == 1:
+                    # ignore one-sided breakpoint
+                    # NOTE: alt allele at least > 7 characters
+                    #       e.g., ]chr7:152222658]C
+                    if svtype == "BND" and len(t[4]) < 6:
+                        continue
+                    # NOTE: correct breakpoint end position?
+                    if svtype == "DEL" or svtype == "DUP" or svtype == "INV":
+                        s.pos2 = s.pos + abs(svlen)
+
+                # parse VCF alt allele
+                # https://samtools.github.io/hts-specs/VCFv4.2.pdf
+                # t[p[
+                m = re.findall(r"^[A-Z]+\[([^\s:]+):(\d+)\[$", t[4])
+                # t]p]
+                m1 = re.findall(r"^\]([^\s:]+):(\d+)\][A-Z]+$", t[4])
+                # [p[t: reverse comp piece extending right of p is joined before t
+                m2 = re.findall(r"^\[([^\s:]+):(\d+)\[[A-Z]+$", t[4])
+                # t]p]: reverse comp piece extending left of p is joined after t
+                m3 = re.findall(r"^[A-Z]+\]([^\s:]+):(\d+)\]$", t[4])
+                if len(m) > 0:
+                    m = m[0]
+                    s.ctg2 = m[0]
+                    s.pos2 = int(m[1])
+                    s.ori = ">>"
+                elif len(m1) > 0:
+                    m1 = m1[0]
+                    s.ctg2 = m1[0]
+                    s.pos2 = int(m1[1])
+                    s.ori = "<<"
+                elif len(m2) > 0:
+                    m2 = m2[0]
+                    s.ctg2 = m2[0]
+                    s.pos2 = int(m2[1])
+                    s.ori = "<>"
+                elif len(m3) > 0:
+                    m3 = m3[0]
+                    s.ctg2 = m3[0]
+                    s.pos2 = int(m3[1])
+                    s.ori = "><"
+
+                if s.ctg == s.ctg2 and (s.ori == "><" or s.ori == "<>"):
+                    s.inv = True
+
+                if s.inv and s.SVTYPE == "BND":
+                    s.SVTYPE = "INV"
+                    svlen = abs(s.pos2 - s.pos)
                     s.SVLEN = svlen
 
-                    # NOTE: \b not right, use ;
-                    m = re.findall(r"\bEND=(\d+)", info)
+                if s.SVTYPE == "DUP" and s.ori == ">>":
+                    s.ori = "<<"
+
+                if s.ctg == s.ctg2 and s.ori != "><" and s.ori != "<>" and s.SVTYPE == "INV":
+                    s.ori = "><"
+                    s.inv = True
+
+                if s.ori == ">>" and s.SVTYPE == "BND" and s.ctg == s.ctg2:
+                    m = re.findall(r"DETAILED_TYPE=([^\s;]+)", info)
                     if len(m) > 0:
-                        s.pos2 = int(m[0])
-                    elif rlen == 1:
-                        # ignore one-sided breakpoint
-                        # NOTE: alt allele at least > 7 characters
-                        #       e.g., ]chr7:152222658]C
-                        if svtype == "BND" and len(t[4]) < 6:
-                            continue
-                        # NOTE: correct breakpoint end position?
-                        if svtype == "DEL" or svtype == "DUP" or svtype == "INV":
-                            s.pos2 = s.pos + abs(svlen)
+                        if m[0] == 'Templated_ins':
+                            s.SVTYPE = 'DUP'
+                    else:
+                        s.SVTYPE = "DEL"
+                elif s.ori == "<<" and s.SVTYPE == "BND" and s.ctg == s.ctg2:
+                    s.SVTYPE = "DUP"
 
-                    # parse VCF alt allele
-                    # https://samtools.github.io/hts-specs/VCFv4.2.pdf
-                    # t[p[
-                    m = re.findall(r"^[A-Z]+\[([^\s:]+):(\d+)\[$", t[4])
-                    # t]p]
-                    m1 = re.findall(r"^\]([^\s:]+):(\d+)\][A-Z]+$", t[4])
-                    # [p[t: reverse comp piece extending right of p is joined before t
-                    m2 = re.findall(r"^\[([^\s:]+):(\d+)\[[A-Z]+$", t[4])
-                    # t]p]: reverse comp piece extending left of p is joined after t
-                    m3 = re.findall(r"^[A-Z]+\]([^\s:]+):(\d+)\]$", t[4])
-                    if len(m) > 0:
-                        m = m[0]
-                        s.ctg2 = m[0]
-                        s.pos2 = int(m[1])
-                        s.ori = ">>"
-                    elif len(m1) > 0:
-                        m1 = m1[0]
-                        s.ctg2 = m1[0]
-                        s.pos2 = int(m1[1])
-                        s.ori = "<<"
-                    elif len(m2) > 0:
-                        m2 = m2[0]
-                        s.ctg2 = m2[0]
-                        s.pos2 = int(m2[1])
-                        s.ori = "<>"
-                    elif len(m3) > 0:
-                        m3 = m3[0]
-                        s.ctg2 = m3[0]
-                        s.pos2 = int(m3[1])
-                        s.ori = "><"
+                if s.SVTYPE == "DEL" and s.SVLEN > 0:
+                    svlen = -svlen
+                    s.SVLEN = svlen
 
+                if s.SVTYPE != "BND" and s.ctg != s.ctg2:
+                    # not possible for indel, dup and inversion
+                    raise Exception("different contigs for non-BND type")
 
-                    if s.ctg == s.ctg2 and (s.ori == "><" or s.ori == "<>"):
-                        s.inv = True
+                if (
+                    s.SVTYPE == "BND"
+                    and s.ctg == s.ctg2
+                ):
+                    if s.SVLEN == 0 and abs(s.pos2 - s.pos) < min_read_len:
+                        continue
+                    if s.SVLEN != 0 and abs(s.SVLEN) < min_read_len:
+                        continue
 
-                    if svtype != "BND" and s.ctg != s.ctg2:
-                        # not possible for indel, dup and inversion
-                        raise Exception("different contigs for non-BND type")
-
-                    if (
-                        svtype == "BND"
-                        and s.ctg == s.ctg2
-                    ):
-                        if svlen == 0 and abs(s.pos2 - s.pos) < min_read_len:
-                            continue
-                        if svlen != 0 and abs(s.SVLEN) < min_read_len:
-                            continue
-
-                    if s.ctg == s.ctg2 and s.pos > s.pos2:
-                        tmp = s.pos
-                        s.pos = s.pos2
-                        s.pos2 = tmp
-                    sv.append(s)
-            #if s.svid == 'severus_INS16464':
-            #     print(t, s.svid, s.SVTYPE, s.SVLEN, s.ori)
+                if s.ctg == s.ctg2 and s.pos > s.pos2:
+                    tmp = s.pos
+                    s.pos = s.pos2
+                    s.pos2 = tmp
+                sv.append(s)
+    f.close()
     return sv
 
 
@@ -452,8 +490,6 @@ def gc_cmp_sv(opt, base, test, label):
     tot = error = 0
     for j in range(len(test)):
         t = test[j]
-        #if opt.print_all:
-        #    print(label, t.ctg, t.pos, t.ori, t.ctg2, t.pos2, t.SVTYPE, t.SVLEN, t.svid, sep="\t")
 
         # Not long enough for non-BND type
         # NOTE: here use 100bp as the default length instead of 80

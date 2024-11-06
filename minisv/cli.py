@@ -65,15 +65,6 @@ class EvalOpt:
     merge: bool = False
 
 
-@dataclass
-class svisec:
-    type: str = ""
-    len: int = 0
-    st: int = 0
-    en: int = 0
-    flag: int = 0
-
-
 @click.group(help="minisv tool commands")
 @click.version_option(__version__)
 @click.pass_context
@@ -492,6 +483,87 @@ def eval(
     "-v", required=False, default=0, type=float, help="ignore VAF below FLOAT"
 )
 @click.option("-F", "--ignoreflt", is_flag=True, help="ignore VCF filter")
+@click.option("-i", "--consensusid", required=False, type=str, default="", help="consensus id file")
+@click.option("-G", "--gt", is_flag=True, help="check GT")
+@click.option("-e", is_flag=True, help="print errors")
+@click.option("-a", is_flag=True, help="print all")
+@click.argument("readidtsv", type=str, nargs=1)
+@click.argument("msvasm", type=str, nargs=1)
+@click.argument("outstat", type=str, nargs=1)
+@click.argument("vcffile", nargs=1)
+def filterasm(
+    w: str,
+    svlen: str,
+    c: int,
+    r: float,
+    m: float,
+    d: bool,
+    e: bool,
+    a: bool,
+    v: float,
+    consensusid: str,
+    b,
+    gt,
+    ignoreflt,
+    merge,
+    readidtsv,
+    msvasm,
+    outstat,
+    vcffile,
+):
+    """Evaluation of SV calls"""
+    from .filtercaller import othercaller_filterasm
+
+    options = EvalOpt(
+        min_len=parseNum(svlen),
+        min_count=int(c),
+        win_size=parseNum(w),
+        read_len_ratio=r,
+        min_len_ratio=m,  # NOTE: the option are not input
+        dbg=d,
+        bed=gc_read_bed(b) if b is not None else None,
+        print_err=e,
+        print_all=a,
+        min_vaf=v,
+        check_gt=gt,
+        merge=merge,
+        ignore_flt=ignoreflt,
+    )
+    othercaller_filterasm(vcffile, options, readidtsv, msvasm, outstat, consensusid)
+
+
+@cli.command()
+@click.option("-d", is_flag=True, help="verbose option for debug")
+@click.option("-b", type=click.Path(exists=True), help="bed to restrict the comparison")
+@click.option(
+    "-l", "--svlen", required=False, default="100", type=str, help="minimum sv length"
+)
+@click.option("-c", required=False, default=0, type=int, help="minimum sv counts")
+@click.option("-w", required=False, default="500", type=str, help="window size")
+@click.option(
+    "-r",
+    required=False,
+    default=0.8,  # NOTE: in js this might be a bug, these ratio name looks confusing
+    type=float,
+    help="read SVs longer than svlen*FLOAT",
+)
+@click.option(
+    "-m",
+    required=False,
+    default=0.6,
+    type=float,
+    help="minimum length ratio similarity between read SV and truthset SV",
+)
+@click.option(
+    "-M",
+    "--merge",
+    is_flag=True,
+    help="merge SV as consensus truth"
+)
+@click.option(
+    "-v", required=False, default=0, type=float, help="ignore VAF below FLOAT"
+)
+@click.option("-F", "--ignoreflt", is_flag=True, help="ignore VCF filter")
 @click.option("-G", "--gt", is_flag=True, help="check GT")
 @click.option("-e", is_flag=True, help="print errors")
 @click.option("-a", is_flag=True, help="print all")
@@ -536,6 +608,7 @@ def annot(
 @dataclass
 class viewopt:
     min_read_len: int
+    min_count: int
     ignore_flt: bool
     check_gt: bool
     count_long: bool
@@ -544,18 +617,20 @@ class viewopt:
 
 @cli.command()
 @click.option(
-    "-minlen", required=False, default="100", type=str, help="minimum sv length"
+    "-minlen", required=False, default=100, type=int, help="minimum sv length"
 )
 @click.option("-ignoreflt", is_flag=True, help="ignore FILTER field in VCF")
 @click.option("-gt", is_flag=True, help="check GT in VCF")
-@click.option("-c", is_flag=True, help="count 20kb,100kb,1Mb and translocations")
+@click.option("-c", "--count", default=0, type=int, help="minimum count")
+@click.option("-C", "--countlong", is_flag=True, help="count 20kb,100kb,1Mb and translocations")
 @click.option(
     "-b", required=False, type=click.Path(exists=True), help="restricted bed file"
 )
 @click.argument("input", nargs=-1)
-def view(minlen: int, ignoreflt: bool, gt: bool, c: bool, b: str, input):
+def view(minlen: int, ignoreflt: bool, gt: bool, countlong: bool, count: int, b: str, input):
     opt = viewopt(
-        min_read_len=minlen, ignore_flt=ignoreflt, check_gt=gt, count_long=c, bed=b
+        min_read_len=minlen, ignore_flt=ignoreflt, check_gt=gt, count_long=countlong, bed=b,
+        min_count=count
     )
     gc_cmd_view(opt, input)
 
@@ -567,43 +642,7 @@ def view(minlen: int, ignoreflt: bool, gt: bool, c: bool, b: str, input):
 @click.argument("gsvs", type=click.Path(), nargs=-1)
 def isec(w, gsvs):
     """Usage: minisv isec base.gsv alt.gsv [...]"""
-    def get_type(t, col_info):
-        info = t[col_info]
-        m = re.findall(r"\b(SVTYPE|SVLEN|qoff_l|qoff_r)=([^\s;]+)", info)
-
-        type = None
-        qoff_l = -1
-        qoff_r = -1
-        flag = 0
-        len = 0
-
-        for element_type, element_val in m:
-            if element_type == "SVTYPE":
-                type = element_val
-            elif element_type == "SVLEN":
-                len = int(element_val)
-            elif element_type == "qoff_l":
-                qoff_l = int(element_val)
-            elif element_type == "qoff_r":
-                qoff_r = int(element_val)
-
-        if type is None or qoff_l < 0 or qoff_r < 0:
-            raise Exception("missing information")
-        # print(type, len, qoff_l, qoff_r)
-
-        # insertion
-        if type == "INS" or type == "DUP":
-            flag = 1
-        # deletion
-        elif type == "DEL":
-            flag = 2
-        # inversion
-        elif type == "INV":
-            flag = 4
-        # translocation
-        elif type == "BND" and col_info == 8 and t[0] != t[3]:
-            flag = 8
-        return svisec(type = type, len = len, st = qoff_l, en = qoff_r, flag = flag)
+    from .type import get_type
 
     g = []
     # file as filter
@@ -621,7 +660,8 @@ def isec(w, gsvs):
                     h[name] = []
                 h[name].append(get_type(t, col_info))
         g.append(h)
-    # g: [{readname:[svtype_dict]}, {}]
+    # one read may contain somatic and germline sv
+    # g: [{readname:[sv_dict]}]
 
     # file to be filtered
     with gzip.open(gsvs[0], 'rt') as base_gsv:
@@ -721,6 +761,41 @@ def filtersnf(snfvcf, msvasm, outstat):
     filter Sniffles2 results based on read ids overlap with graph alignment/self alignment
     """
     call_filtersnf(snfvcf, msvasm, outstat)
+
+
+@cli.command()
+@click.option(
+    "-t",
+    required=False,
+    default=1,
+    type=int,
+    help="tumor vcf sample index"
+)
+@click.option(
+    "-n",
+    required=False,
+    default=2,
+    type=int,
+    help="normal vcf sample index"
+)
+@click.argument("snfvcf", type=str, nargs=1)
+def snfpair(snfvcf, t, n):
+    t_index = t
+    n_index = n
+    with gzip.open(snfvcf, 'rt') as inf:
+        for line in inf:
+            if line[0].startswith("#"):
+                print(line.strip())
+                continue
+            t = line.strip().split("\t")
+            sn = t[8+n_index].split(':')
+            st = t[8+t_index].split(':')
+            fmt = t[8].split(':')
+            for i in range(len(fmt)):
+                if fmt[i] == "DV" and int(st[i]) > 0 and (sn[i] == "NA" or int(sn[i]) == 0):
+                    print(line.strip())
+                    continue
+         
 
 
 @cli.command()

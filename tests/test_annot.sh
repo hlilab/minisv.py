@@ -1,6 +1,5 @@
 #!/bin/bash -ex
 
-
 test1() {
 minisv annot -a /homes6/hli/hli1/gafcall/COLO829.truth.hs38.vcf ../../1a.alignment_sv_tools/output/severus/COLO829_hifi1/grch38/somatic_SVs/severus_somatic.vcf ../../1a.alignment_sv_tools/output/nanomonsv/COLO829_hifi1/grch38_tnpair.vcf > test1.eval
 /hlilab/alvin/miniconda3/bin/k8 /hlilab/alvin/miniconda3/envs/gafcall/bin/minisv.js annot -a /homes6/hli/hli1/gafcall/COLO829.truth.hs38.vcf ../../1a.alignment_sv_tools/output/severus/COLO829_hifi1/grch38/somatic_SVs/severus_somatic.vcf ../../1a.alignment_sv_tools/output/nanomonsv/COLO829_hifi1/grch38_tnpair.vcf > test2.eval

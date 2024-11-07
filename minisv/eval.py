@@ -432,7 +432,8 @@ def gc_parse_sv(file_path, min_read_len, min_count: int, ignore_flt: bool, check
                     m = re.findall(r"DETAILED_TYPE=([^\s;]+)", info)
                     if len(m) > 0:
                         if m[0] == 'Templated_ins':
-                            s.SVTYPE = 'DUP'
+                            # NOTE: this is not tandem duplication
+                            s.SVTYPE = "BND"
                     else:
                         s.SVTYPE = "DEL"
                 elif s.ori == "<<" and s.SVTYPE == "BND" and s.ctg == s.ctg2:
@@ -667,7 +668,7 @@ def gc_cmp_same_sv1(win_size, min_len_ratio, b, t):
     len_check = (
         abs(b.SVLEN) >= abs(t.SVLEN) * min_len_ratio
         and abs(t.SVLEN) >= abs(b.SVLEN) * min_len_ratio
-    )
+    ) or abs(abs(b.SVLEN) - abs(t.SVLEN)) < 1000
 
     if b.SVTYPE != "BND" and t.SVTYPE != "BND" and (not len_check):
         return False

@@ -237,7 +237,8 @@ def othercaller_filterasm(vcf_file, opt, readidtsv, msvasm, outstat, consensus_s
                 len_check = (
                     abs(sv_j.len) >= abs(t.SVLEN) * opt.min_len_ratio
                     and abs(t.SVLEN) >= abs(sv_j.len) * opt.min_len_ratio
-                )
+                ) or abs(abs(sv_j.len) - abs(t.SVLEN)) <= 1000
+
                 #debug INS
                 #if t.svid == 'severus_INS16922':
                 #     print(t.svid, read_i, sv_j.flag, sv_j.len, t.SVLEN, t.SVTYPE, len_check, abs(t.SVLEN) * opt.min_len_ratio, abs(sv_j.len) * opt.min_len_ratio, opt.min_len_ratio)
@@ -245,8 +246,27 @@ def othercaller_filterasm(vcf_file, opt, readidtsv, msvasm, outstat, consensus_s
                 #     print(t.svid, read_i, sv_j.flag, sv_j.len, t.SVLEN, t.SVTYPE, len_check, abs(t.SVLEN) * opt.min_len_ratio, abs(sv_j.len) * opt.min_len_ratio, opt.min_len_ratio)
                 #if t.svid == 'severus_INS17052':
                 #     print(t.svid, read_i, sv_j.flag, sv_j.len, t.SVLEN, t.SVTYPE, len_check, abs(t.SVLEN) * opt.min_len_ratio, abs(sv_j.len) * opt.min_len_ratio, opt.min_len_ratio)
+                #if t.svid == 'severus_INS21634':
+                #     print(t.svid, read_i, sv_j.flag, sv_j.len, t.SVLEN, sv_j.type, t.SVTYPE, len_check, abs(t.SVLEN) * opt.min_len_ratio, abs(sv_j.len) * opt.min_len_ratio, opt.min_len_ratio)
+                #if t.svid == 'severus_BND225_1':
+                #     print(t.svid, read_i, sv_j.flag, t_type_flag, sv_j.len, t.SVLEN, sv_j.type, t.SVTYPE, len_check, abs(t.SVLEN) * opt.min_len_ratio, abs(sv_j.len) * opt.min_len_ratio, opt.min_len_ratio)
+                #if t.svid == 'r_319_0':
+                #     print(t.svid, read_i, sv_j.flag, t_type_flag, sv_j.len, t.SVLEN, sv_j.type, t.SVTYPE, len_check, abs(t.SVLEN) * opt.min_len_ratio, abs(sv_j.len) * opt.min_len_ratio, opt.min_len_ratio, read_num_wt_type)
+                #if t.svid == 'severus_INS21583':
+                #if t.svid == 'severus_INS21634':
+                #if t.svid == 'severus_INS13454':
+                #if t.svid == 'severus_INS13602':
+                #if t.svid == 'i_1179':
+                #     print(t.svid, read_i, sv_j.flag, t_type_flag, sv_j.len, t.SVLEN, sv_j.type, t.SVTYPE, len_check, abs(t.SVLEN) * opt.min_len_ratio, abs(sv_j.len) * opt.min_len_ratio, opt.min_len_ratio, read_num_wt_type)
+
                 # strict sv type and length check
                 if (t_type_flag & sv_j.flag) and len_check:
+                     read_num_wt_type += 1
+                     break
+
+                # patch complex BND such as template insertion
+                # or self-assembly intra-chrom BND but nanomonsv reports INV
+                if (t_type_flag == 0 or sv_j.flag == 0) and len_check:
                      read_num_wt_type += 1
                      break
 

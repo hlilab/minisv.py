@@ -177,7 +177,10 @@ def othercaller_filterasm(vcf_file, opt, readidtsv, msvasm, outstat, consensus_s
     outf.write("svlen\tsvlen_range\tsvid\tis_consensus\ttype\tcontig1\tpos1\tori\tcontig2\tpos2\tasm_support\tasm_support_onlyreadname\tread_name_number\n")
 
     # first vcf is to be annotated
+    # read id, typing and length
     all_ids = []
+    # only read name overlap
+    all_ids_onlyname = []
     # msv sv id record
     for i in range(len(vcf)):
  
@@ -232,12 +235,40 @@ def othercaller_filterasm(vcf_file, opt, readidtsv, msvasm, outstat, consensus_s
                     read_num_wt_type += 1
                     break
 
-                # 2. ~1K INS can be transformed to be 100bp in self-assembly
-                #    reduce min_len_ratio to 0.3
                 len_check = (
                     abs(sv_j.len) >= abs(t.SVLEN) * opt.min_len_ratio
                     and abs(t.SVLEN) >= abs(sv_j.len) * opt.min_len_ratio
                 ) or abs(abs(sv_j.len) - abs(t.SVLEN)) <= 1000
+
+                # strict sv type and length check
+                if (t_type_flag & sv_j.flag) and len_check:
+                    read_num_wt_type += 1
+                    break
+
+                # patch complex BND such as template insertion
+                # or self-assembly intra-chrom BND but nanomonsv reports INV
+                if (t_type_flag == 0 or sv_j.flag == 0) and len_check:
+                     read_num_wt_type += 1
+                     break
+
+                # 2. <1K INDEL could change type INS->DEL, DEL->INS
+                #    partly caused by VNTR
+                if t_type_flag in [1, 2] and sv_j.flag in [1, 2]:
+                    if (t_type_flag == 1 and sv_j.flag == 2) or (t_type_flag == 2 and sv_j.flag == 1):
+                        len_check1 = abs(t.SVLEN) + abs(sv_j.len) <= 1000
+                        #ignore the SVTYPE for the filtering in this step
+                        if len_check1:
+                            read_num_wt_type += 1
+                            break
+                        else:
+                            # duplicated check
+                            len_check2 = (
+                                abs(sv_j.len) >= abs(t.SVLEN) * opt.min_len_ratio
+                                and abs(t.SVLEN) >= abs(sv_j.len) * opt.min_len_ratio
+                            )
+                            if len_check2 and (t_type_flag & sv_j.flag):
+                                read_num_wt_type += 1
+                                break
 
                 #debug INS
                 #if t.svid == 'severus_INS16922':
@@ -259,16 +290,10 @@ def othercaller_filterasm(vcf_file, opt, readidtsv, msvasm, outstat, consensus_s
                 #if t.svid == 'i_1179':
                 #     print(t.svid, read_i, sv_j.flag, t_type_flag, sv_j.len, t.SVLEN, sv_j.type, t.SVTYPE, len_check, abs(t.SVLEN) * opt.min_len_ratio, abs(sv_j.len) * opt.min_len_ratio, opt.min_len_ratio, read_num_wt_type)
 
-                # strict sv type and length check
-                if (t_type_flag & sv_j.flag) and len_check:
-                     read_num_wt_type += 1
-                     break
+                #severus_INS10090 m84039_230414_235240_s2/244716513/ccs 8 1 0 1760 BND INS False 1056.0 0.0 0.6 0
+                if t.svid == opt.svid:
+                    print(t.svid, read_i, sv_j.flag, t_type_flag, sv_j.len, t.SVLEN, sv_j.type, t.SVTYPE, len_check, abs(t.SVLEN) * opt.min_len_ratio, abs(sv_j.len) * opt.min_len_ratio, opt.min_len_ratio, read_num_wt_type)
 
-                # patch complex BND such as template insertion
-                # or self-assembly intra-chrom BND but nanomonsv reports INV
-                if (t_type_flag == 0 or sv_j.flag == 0) and len_check:
-                     read_num_wt_type += 1
-                     break
 
         filt_cnt = len(ol_readn)
 
@@ -279,10 +304,14 @@ def othercaller_filterasm(vcf_file, opt, readidtsv, msvasm, outstat, consensus_s
          # output sv ids in vcf or msv
         if read_num_wt_type >= opt.min_count and filt_cnt >= opt.min_count and t.count >= opt.min_count:
             all_ids.append(query_svid)
+        if opt.only_readname:
+            if filt_cnt >= opt.min_count and t.count >= opt.min_count:
+                all_ids_onlyname.append(query_svid)
 
     outf.close()
 
     assert set(all_ids).issubset(set(parsed_id_dict.keys()))
+    assert set(all_ids_onlyname).issubset(set(parsed_id_dict.keys()))
     ## output vcf format with sv ids above
     if is_gzipped(vcf_file):
         f = gzip.open(vcf_file, 'rt')
@@ -299,8 +328,12 @@ def othercaller_filterasm(vcf_file, opt, readidtsv, msvasm, outstat, consensus_s
         else: # other caller
             t = line.strip().split("\t")
             query_svid = str(parse_svid(t[2]))
-        if query_svid in all_ids:
-            print(line.strip())
+        if opt.only_readname:
+            if query_svid in all_ids_onlyname:
+                print(line.strip())
+        else:
+            if query_svid in all_ids:
+                print(line.strip())
     f.close()
 
 

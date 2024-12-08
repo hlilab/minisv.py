@@ -1,4 +1,4 @@
-import pysam
+##import pysam
 
 def extract_phase_HP(bam):
     samfile = pysam.AlignmentFile(bam, "rc")

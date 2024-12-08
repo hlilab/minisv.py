@@ -531,10 +531,12 @@ def gc_cmp_sv(opt, base, test, label):
                     t.svid,
                     t.SVLEN,
                     n,
+                    t.merge,
+                    t.count,
                     sep="\t",
                 )
         if opt.print_all:
-            print(t.ctg, t.pos, t.ori, t.ctg2, t.pos2, t.SVTYPE, t.SVLEN, t.svid, n, sep="\t")
+            print(t.ctg, t.pos, t.ori, t.ctg2, t.pos2, t.SVTYPE, t.SVLEN, t.svid, n, t.merge, t.count, sep="\t")
 
     return [tot, error]
 

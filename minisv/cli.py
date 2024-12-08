@@ -63,6 +63,8 @@ class EvalOpt:
     ignore_flt: bool = False
     check_gt: bool = False
     merge: bool = False
+    svid: str = ""
+    only_readname: bool = False
 
 
 @click.group(help="minisv tool commands")
@@ -484,7 +486,9 @@ def eval(
 )
 @click.option("-F", "--ignoreflt", is_flag=True, help="ignore VCF filter")
 @click.option("-i", "--consensusid", required=False, type=str, default="", help="consensus id file")
+@click.option("-s", "--svid", required=False, type=str, default="", help="debug one svid")
 @click.option("-G", "--gt", is_flag=True, help="check GT")
+@click.option("-r", "--onlyreadname", is_flag=True, help="only filter by read name for vcf output")
 @click.option("-e", is_flag=True, help="print errors")
 @click.option("-a", is_flag=True, help="print all")
 @click.argument("readidtsv", type=str, nargs=1)
@@ -502,6 +506,7 @@ def filterasm(
     a: bool,
     v: float,
     consensusid: str,
+    svid: str,
     b,
     gt,
     ignoreflt,
@@ -510,11 +515,13 @@ def filterasm(
     msvasm,
     outstat,
     vcffile,
+    onlyreadname
 ):
     """Evaluation of SV calls"""
     from .filtercaller import othercaller_filterasm
 
     options = EvalOpt(
+        only_readname=onlyreadname,
         min_len=parseNum(svlen),
         min_count=int(c),
         win_size=parseNum(w),
@@ -528,6 +535,7 @@ def filterasm(
         check_gt=gt,
         merge=merge,
         ignore_flt=ignoreflt,
+        svid=svid
     )
     othercaller_filterasm(vcffile, options, readidtsv, msvasm, outstat, consensusid)
 

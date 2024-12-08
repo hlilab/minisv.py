@@ -17,8 +17,8 @@ diff test1.eval test2.eval | wc -l
 
 
 main() {
-test1
-#test2
+#test1
+test2
 }
 
 main

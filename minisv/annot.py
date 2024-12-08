@@ -36,9 +36,5 @@ def annot(inputfiles, opt):
                 other.append(vcf[j])
 
         merge = gc_eval_merge_sv(opt.win_size, opt.min_len_ratio, other)
-        merge2 = []
-        for k in range(len(merge)):
-            if merge[k].merge >= 2:
-                merge2.append(merge[k])
-        tot_fp, fp = gc_cmp_sv(opt, merge2, vcf[i], 'merge')
+        tot_fp, fp = gc_cmp_sv(opt, merge, vcf[i], 'merge')
         break

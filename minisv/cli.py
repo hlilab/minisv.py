@@ -15,6 +15,7 @@ from .phase import extract_phase_HP, annotate_HP
 from .minisv import GafParser
 from .filtercaller import call_filterseverus, call_filtersnf, call_filtermsv
 from .io import gc_cmd_view, merge_indel_breakpoints, parseNum, write_vcf
+from .ensemble import insilico_truth
 
 __version__ = "0.1.2"
 
@@ -896,6 +897,15 @@ def getindel(
     gafs = GafParser(input_samples, prefix, assembly, vntr, cent, l1)
     gafs.parse_indel(mapq, mlen, verbose, n_cpus=cpu, ds=ds)
     gafs.merge_indel(min_cnt=support_read, min_mapq=mapq)
+
+
+@cli.command()
+@click.argument("msvunion", type=str, nargs=1)
+def ensembleunion(msvunion):
+    """
+    filter Sniffles2 results based on read ids overlap with graph alignment/self alignment
+    """
+    insilico_truth(msvunion)
 
 
 # @cli.command()

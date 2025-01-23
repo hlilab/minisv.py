@@ -15,7 +15,7 @@ from .phase import extract_phase_HP, annotate_HP
 from .minisv import GafParser
 from .filtercaller import call_filterseverus, call_filtersnf, call_filtermsv
 from .io import gc_cmd_view, merge_indel_breakpoints, parseNum, write_vcf
-from .ensemble import insilico_truth
+from .ensemble import insilico_truth, double_strand_break
 
 __version__ = "0.1.2"
 
@@ -906,6 +906,15 @@ def ensembleunion(msvunion):
     filter Sniffles2 results based on read ids overlap with graph alignment/self alignment
     """
     insilico_truth(msvunion)
+
+
+@cli.command()
+@click.argument("collapsedmsvunion", type=str, nargs=1)
+def doublestrandbreak(collapsedmsvunion):
+    """
+    filter Sniffles2 results based on read ids overlap with graph alignment/self alignment
+    """
+    double_strand_break(collapsedmsvunion)
 
 
 # @cli.command()

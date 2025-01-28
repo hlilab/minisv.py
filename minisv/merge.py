@@ -29,7 +29,7 @@ class svinfo:
     info: Optional[str] = None
     SVTYPE: Optional[str] = ""
     source: Optional[str] = None
-    SVLEN: Optional[int] = 0
+    SVLEN: Optional[int] = None
     cen_dist: Optional[int] = None
     cen_overlap: Optional[int] = None
     tsd_len: Optional[int] = None
@@ -284,6 +284,8 @@ def write_sv(opt, s):
     cnt = {}
     cnt_strand = [0, 0]
     name = []
+    cnt_fr = 0
+    cnt_rf = 0
     for i in range(len(s)):
         mapq += s[i]._mapq
         if s[i].source not in cnt:
@@ -293,9 +295,13 @@ def write_sv(opt, s):
         cnt[s[i].source][j] += 1
         cnt_strand[j] += 1
         name.append(s[i].name)
+         
+        if s[i].ori == "><":
+            cnt_fr += 1
+        elif s[i].ori == "<>":
+            cnt_rf += 1
 
     mapq = normal_round(mapq / len(s))
-
     # filter by the count
     if opt.min_rt_len > 0 and rt_len >= opt.min_rt_len:
         if len(s) < opt.min_cnt_rt:
@@ -315,6 +321,12 @@ def write_sv(opt, s):
     info += f"count={'|'.join(cnt_arr)};"
     info += f"rt_len={rt_len};"
     info += re.sub(r"(;?)source=[^;\s=]+", "", v.info)
+
+    if cnt_fr + cnt_rf > 0:
+        info += f";count_fr={cnt_fr};count_rf={cnt_rf}"
+        if cnt_fr * cnt_rf == 0 and v.ctg == v.ctg2:
+            info += ";foldback"
+
     info += f";reads={','.join(name)}"
 
     if not v.is_bp:

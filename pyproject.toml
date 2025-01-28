@@ -2,12 +2,12 @@
 name = "minisv"
 version = "0.1.2"
 description = ""
-authors = ["qinqian <qqin@broadinstitute.org>"]
+authors = ["qinqian <qianqind@gmail.com>"]
 readme = "README.md"
-include = [{ path = "minisv/**/*.so", format = "wheel" }]
+##include = [{ path = "minisv/**/*.so", format = "wheel" }]
 
 [build-system]
-requires = ["poetry-core", "cython", "setuptools"]
+requires = ["poetry-core", "setuptools"]
 build-backend = "poetry.core.masonry.api"
 
 #[tool.poetry.build]

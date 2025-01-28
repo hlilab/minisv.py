@@ -648,7 +648,7 @@ def view(minlen: int, ignoreflt: bool, gt: bool, countlong: bool, count: int, b:
 @click.option(
     "-w", required=False, default=1000, type=int, help="window size"
 )
-@click.argument("gsvs", type=click.Path(), nargs=-1)
+@click.argument("gsvs", type=click.Path(), nargs=-1, required=True)
 def isec(w, gsvs):
     """Usage: minisv isec base.gsv alt.gsv [...]"""
     from .type import get_type
@@ -729,7 +729,7 @@ def vcf(input):
 
 @cli.command()
 @click.argument("input", type=click.File("r"), default=sys.stdin)
-def formatvcf(input):
+def genvcf(input):
     options = None
     write_vcf(options, input)
 
@@ -903,7 +903,7 @@ def getindel(
 @click.argument("msvunion", type=str, nargs=1)
 def ensembleunion(msvunion):
     """
-    filter Sniffles2 results based on read ids overlap with graph alignment/self alignment
+    ensemble and collapse the minisv.js union results
     """
     insilico_truth(msvunion)
 

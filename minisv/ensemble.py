@@ -51,8 +51,8 @@ def double_strand_break(collapsed_msv_union):
     with open(collapsed_msv_union) as inf:
         for line in inf:
             elements = line.strip().split('\t')
-            breakpts.append([elements[0], int(elements[1]), elements[2][0], elements[-1], elements[-2], "left(+)"])
-            breakpts.append([elements[3], int(elements[4]), elements[2][1], elements[-1], elements[-2], "right(-)"])
+            breakpts.append([elements[0], int(elements[1]), elements[2][0], elements[-1], "left(+)"])
+            breakpts.append([elements[3], int(elements[4]), elements[2][1], elements[-1], "right(-)"])
 
     breakpts.sort(key = lambda x: (x[0], int(x[1])))
     dtype_list = []
@@ -68,21 +68,23 @@ def double_strand_break(collapsed_msv_union):
             svtype0 = [ val for (key, val) in re_info.findall(pt0[-2]) if key == 'SVTYPE' ][0]
             svtype1 = [ val for (key, val) in re_info.findall(pt1[-2]) if key == 'SVTYPE' ][0]
 
+            asmrid0 = [ val for (key, val) in re_info.findall(pt0[-2]) if key == 'asm_read_ids' ][0].split(',')
+            asmrid1 = [ val for (key, val) in re_info.findall(pt1[-2]) if key == 'asm_read_ids' ][0].split(',')
+
             # ['chr10', 51935447, '<', '1,2,3', 'SVTYPE=BND;SVLEN=0;count=13;group_id=41;file_id=2', 'left(+)'] ['chr10', 51935447, '<', '0', 'SVTYPE=BND;SVLEN=0;count=13;group_id=935;file_id=0', 'right(-)'] BND BND
             # skip the same breakpoint coordinate, do not consider the orientation
             if pt0[0] == pt1[0] and pt0[1] == pt1[1]:
                 break
 
             # case 4 from the same read
-            if svtype0 == svtype1 and svtype0 == "INV":
+            if svtype0 == svtype1 and svtype0 == "INV" and (len(list(set(asmrid0) & set(asmrid1))) >= 1):
                 dsbtype = "Parallel_Breakpoints_case4"
-
             # case 4 from diff read
             if pt1[-1] == pt0[-1]:
                 dsbtype = "Parallel_Breakpoints_case4"
 
             # case 1 from the same read
-            if svtype0 == svtype1 and svtype0 == "DEL":
+            if svtype0 == svtype1 and svtype0 == "DEL" and (len(list(set(asmrid0) & set(asmrid1))) >= 1):
                 dsbtype = "case1"
             # case 1 from the diff read
             if pt0[-1] == 'right(-)' and pt1[-1] == 'left(+)':
@@ -95,7 +97,7 @@ def double_strand_break(collapsed_msv_union):
             if svtype0 == svtype1 and svtype0 == "DUP":
                 dsbtype = "case2"
 
-            if svtype0 == svtype1 and svtype0 == "INS":
+            if svtype0 == svtype1 and svtype0 == "INS" and (len(list(set(asmrid0) & set(asmrid1))) >= 1):
                 dsbtype = "Insertions_case3"
 
             print('\t'.join(map(str, pt0)), '\t'.join(map(str, pt1)), svtype0, svtype1, dsbtype)
@@ -104,5 +106,3 @@ def double_strand_break(collapsed_msv_union):
     print('#stat')
     print('\t'.join(list(val)))
     print('\t'.join(list(map(str, cnt))))
-
-    return

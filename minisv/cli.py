@@ -1,4 +1,5 @@
 #!/usr/bin/env python
+import math
 
 import re
 import gzip
@@ -16,6 +17,7 @@ from .minisv import GafParser
 from .filtercaller import call_filterseverus, call_filtersnf, call_filtermsv
 from .io import gc_cmd_view, merge_indel_breakpoints, parseNum, write_vcf
 from .ensemble import insilico_truth, double_strand_break
+from .union import union_sv, advunion_sv
 
 __version__ = "0.1.2"
 
@@ -48,6 +50,18 @@ class mergeopt:
     max_allele: int = 100
     max_check: int = 500
 
+
+@dataclass
+class unionopt:
+    bed: Optional[str] = None
+    min_len: int = 100
+    read_min_count: int = 2
+    group_min_count: int = 5
+    read_len_ratio: int = 0.8
+    win_size: int = 500
+    min_len_ratio: float = 0.6
+    print_sv: bool = False
+    collapsed: bool = False
 
 @dataclass
 class EvalOpt:
@@ -906,6 +920,70 @@ def ensembleunion(msvunion):
     ensemble and collapse the minisv.js union results
     """
     insilico_truth(msvunion)
+
+
+
+@cli.command()
+@click.option("-b", required=False, default=None, type=str, help="evaluated within the bed file")
+@click.option("-l", required=False, default=100, type=int, help="minimum length")
+@click.option("-c", required=False, default=2, type=int, help="min read count")
+@click.option("-g", required=False, default=5, type=int, help="min group read count")
+@click.option("-r", required=False, default=0.8, type=float, help="read length ratio")
+@click.option("-w", required=False, default=500, type=int, help="window size")
+@click.option("-m", required=False, default=0.6, type=float, help="min sv length ratio")
+@click.option("-p", is_flag=True, help="print union of sv calls or not")
+@click.argument("filename", nargs=-1, required=True)
+def union(
+    b, l, c, g, r, w, m, p, filename
+):
+
+    options = unionopt(
+        bed=b,
+        min_len=l,
+        read_min_count=c,
+        group_min_count=g,
+        read_len_ratio=r,
+        win_size=w,
+        min_len_ratio=m,
+        print_sv=p
+    )
+
+    read_min_len = math.floor(options.min_len * options.read_len_ratio + 0.499)
+    union_sv(filename, read_min_len, options)
+
+
+@cli.command()
+@click.option("-b", required=False, default=None, type=str, help="evaluated within the bed file")
+@click.option("-l", required=False, default=100, type=int, help="minimum length")
+@click.option("-c", required=False, default=2, type=int, help="min read count")
+@click.option("-g", required=False, default=5, type=int, help="min group read count")
+@click.option("-r", required=False, default=0.8, type=float, help="read length ratio")
+@click.option("-w", required=False, default=500, type=int, help="window size")
+@click.option("-m", required=False, default=0.6, type=float, help="min sv length ratio")
+@click.option("-p", is_flag=True, help="print union of sv calls or not")
+@click.option("-u", is_flag=True, help="take only one sv call for one group of svs that has maximum read count from assembly")
+@click.option('--input1', '-i1', type=click.Path(exists=True), multiple=True, help='List of SV call files')
+@click.option('--input2', '-i2', type=click.Path(exists=True), multiple=True, help='List of read ids for the SV call files')
+@click.argument("asmgsv", nargs=1, required=True)
+def advunion(
+    b, l, c, g, r, w, m, p, u,
+    input1,
+    input2, 
+    asmgsv
+):
+    options = unionopt(
+        bed=b,
+        min_len=l,
+        read_min_count=c,
+        group_min_count=g,
+        read_len_ratio=r,
+        win_size=w,
+        min_len_ratio=m,
+        print_sv=p,
+        collapsed=u
+    )
+    read_min_len = math.floor(options.min_len * options.read_len_ratio + 0.499)
+    advunion_sv(input2, input1, asmgsv, read_min_len, options)
 
 
 @cli.command()

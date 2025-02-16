@@ -319,8 +319,12 @@ Here the false negative rate (RN) for *C1* is 11.6% and the false positive rate
 Another way of SV evaluation is to count the true positive and false negative using `union` result of ensembled SV call set, 
 
 ```sh
+# k8 javascript
 minisv.js union -c 5 -b minisv.py/data/hs38.reg.bed severus_asm.vcf msv_filter.msv sanava_asm.vcf nanomonsv_asm.vcf > ensemble.vcf
+# python 
+minisv union -c 5 -b minisv.py/data/hs38.reg.bed severus_asm.vcf msv_filter.msv sanava_asm.vcf nanomonsv_asm.vcf > ensemble.vcf
 ```
+
 
 This will output the supported SV number for each combination of SV callers, the first column is the binary vector for the appearance of
 each caller as in the same order of `union` input, the second caller show the number of SVs, e.g., 1000 row means Severus uniquely reports 
@@ -343,6 +347,39 @@ each caller as in the same order of `union` input, the second caller show the nu
 0111    3
 1111    38
 ```
+
+
+Minisv can also integrate and ensemble sv from the vcfs and read id files directly:
+
+```sh
+minisv advunion -p -b ~/data/pangenome_sv_benchmarking/minisv/data/hs38.reg.bed \
+        -i1 output/minisv_puretumor_somatic_asm/snf_HCC1954_hifi1_somatic_generation2.vcf \
+        -i1 ../1a.alignment_sv_tools/output/savana12/HCC1954_hifi1/grch38/grch38_T_tag.sv_breakpoints_read_support.tsv \
+        -i1 ../1a.alignment_sv_tools/output/severus/HCC1954_hifi1/grch38_cutoff2_read_ids/read_ids.csv \
+        -i1 ../1a.alignment_sv_tools/output/nanomonsv/HCC1954_hifi1/T/grch38_parse.nanomonsv.supporting_read.txt \
+        -i1 output/msv_somatic/HCC1954_hifi1T.hg38l+tg.pair-c2s1.msv \
+        -i2 output/minisv_puretumor_somatic_asm/snf_HCC1954_hifi1_somatic_generation2.vcf \
+        -i2 ../1a.alignment_sv_tools/output/savana12/HCC1954_hifi1/grch38/grch38_T_tag.classified.somatic.vcf \
+        -i2 ../1a.alignment_sv_tools/output/severus/HCC1954_hifi1/grch38_cutoff2_read_ids/somatic_SVs/severus_somatic.vcf \
+        -i2 ../1a.alignment_sv_tools/output/nanomonsv/HCC1954_hifi1/grch38_tnpair.vcf \
+        -i2 output/msv_somatic/HCC1954_hifi1T.hg38l+tg.pair-c2s1.msv \
+        HCC1954T.self.Q0.gsv.gz > HCC1954_withasmreadids.msv
+
+# keep the SV call with maximum read counts
+minisv advunion -u -p -b ~/data/pangenome_sv_benchmarking/minisv/data/hs38.reg.bed \
+        -i1 output/minisv_puretumor_somatic_asm/snf_HCC1954_hifi1_somatic_generation2.vcf \
+        -i1 ../1a.alignment_sv_tools/output/savana12/HCC1954_hifi1/grch38/grch38_T_tag.sv_breakpoints_read_support.tsv \
+        -i1 ../1a.alignment_sv_tools/output/severus/HCC1954_hifi1/grch38_cutoff2_read_ids/read_ids.csv \
+        -i1 ../1a.alignment_sv_tools/output/nanomonsv/HCC1954_hifi1/T/grch38_parse.nanomonsv.supporting_read.txt \
+        -i1 output/msv_somatic/HCC1954_hifi1T.hg38l+tg.pair-c2s1.msv \
+        -i2 output/minisv_puretumor_somatic_asm/snf_HCC1954_hifi1_somatic_generation2.vcf \
+        -i2 ../1a.alignment_sv_tools/output/savana12/HCC1954_hifi1/grch38/grch38_T_tag.classified.somatic.vcf \
+        -i2 ../1a.alignment_sv_tools/output/severus/HCC1954_hifi1/grch38_cutoff2_read_ids/somatic_SVs/severus_somatic.vcf \
+        -i2 ../1a.alignment_sv_tools/output/nanomonsv/HCC1954_hifi1/grch38_tnpair.vcf \
+        -i2 output/msv_somatic/HCC1954_hifi1T.hg38l+tg.pair-c2s1.msv \
+        HCC1954T.self.Q0.gsv.gz > HCC1954_withasmreadids_collapsed.msv
+```
+
 
 Minisv seamlessly parses the VCF format and the minisv format. It has been
 tested with Severus, Sniffles2, cuteSV, SAVANA, SVision-Pro, nanomonsv, SvABA

@@ -1,7 +1,7 @@
 import math
 import re
 from dataclasses import dataclass
-from typing import Optional
+from typing import Optional, List
 
 from .regex import re_info, sv_region_regex
 
@@ -40,6 +40,9 @@ class svinfo:
     inv: Optional[bool] = False
     count: Optional[int] = 0
     svid: Optional[str] = ""
+    clean_svid: Optional[str] = ""
+    readids: Optional[List[str]] = None
+    asmreadids: Optional[List[str]] = None
 
 
 @dataclass

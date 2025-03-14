@@ -43,6 +43,8 @@ class svinfo:
     clean_svid: Optional[str] = ""
     readids: Optional[List[str]] = None
     asmreadids: Optional[List[str]] = None
+    tr_info: Optional[str] = ""
+    segdup_info: Optional[str] = ""
 
 
 @dataclass

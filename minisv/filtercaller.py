@@ -213,7 +213,7 @@ def othercaller_filterasm(vcf_file, opt, readidtsv, msvasm, outstat, consensus_s
         
         if len(consensus_ids) > 0:
             is_consensus = query_svid in consensus_ids
-        assert query_svid in parsed_id_dict
+        assert query_svid in parsed_id_dict, f"{query_svid}, {vcf_file}"
 
         ol_readn = set(parsed_id_dict[query_svid]) & read_ids
 

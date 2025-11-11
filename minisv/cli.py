@@ -17,7 +17,7 @@ from .minisv import GafParser
 from .filtercaller import call_filterseverus, call_filtersnf, call_filtermsv
 from .io import gc_cmd_view, merge_indel_breakpoints, parseNum, write_vcf
 from .ensemble import insilico_truth, double_strand_break
-from .union import union_sv, advunion_sv
+from .union import union_sv, advunion_sv, union_sv_with_tr
 
 __version__ = "0.1.2"
 
@@ -534,7 +534,6 @@ def filterasm(
 ):
     """Evaluation of SV calls"""
     from .filtercaller import othercaller_filterasm
-
     options = EvalOpt(
         only_readname=onlyreadname,
         min_len=parseNum(svlen),
@@ -984,6 +983,35 @@ def advunion(
     )
     read_min_len = math.floor(options.min_len * options.read_len_ratio + 0.499)
     advunion_sv(input2, input1, asmgsv, read_min_len, options)
+
+
+@cli.command()
+@click.option("-b", required=False, default=None, type=str, help="evaluated within the bed file")
+@click.option("-l", required=False, default=100, type=int, help="minimum length")
+@click.option("-c", required=False, default=2, type=int, help="min read count")
+@click.option("-g", required=False, default=5, type=int, help="min group read count")
+@click.option("-r", required=False, default=0.8, type=float, help="read length ratio")
+@click.option("-w", required=False, default=500, type=int, help="window size")
+@click.option("-m", required=False, default=0.6, type=float, help="min sv length ratio")
+@click.option("-p", is_flag=True, help="print union of sv calls or not")
+@click.argument("filename", nargs=-1)
+def union_tr(
+    b, l, c, g, r, w, m, p, filename
+):
+
+    options = unionopt(
+        bed=b,
+        min_len=l,
+        read_min_count=c,
+        group_min_count=g,
+        read_len_ratio=r,
+        win_size=w,
+        min_len_ratio=m,
+        print_sv=p
+    )
+
+    read_min_len = math.floor(options.min_len * options.read_len_ratio + 0.499)
+    union_sv_with_tr(filename, read_min_len, options)
 
 
 @cli.command()

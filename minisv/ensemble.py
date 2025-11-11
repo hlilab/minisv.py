@@ -93,11 +93,15 @@ def double_strand_break(collapsed_msv_union):
             if pt0[0] == pt1[0] and pt0[1] == pt1[1]:
                 continue
 
+            # simple insertion skip
+            if abs(pt1[1] - pt0[1]) <= 49:
+                continue
+
             # NOTE: insertion first filter, then overlap second filter, last parallel, and case 1
 
             # from same read or different reads
             # insertion case 3
-            if (svtype1 == "INS" or svtype1 == "BND") and (svtype0 == "INS" or svtype0 == "BND") and (len(list(set(asmrid0) & set(asmrid1))) >= 1) and (len(list(set(asmrid0) & set(asmrid1))) == len(asmrid0)): # not work due to we sort the orientation and pt0[2] == "<" and pt1[2] == ">":
+            if (svtype1 == "BND" or svtype0 == "BND") and (len(list(set(asmrid0) & set(asmrid1))) >= 1) and (len(list(set(asmrid0) & set(asmrid1))) == len(asmrid0)): # not work due to we sort the orientation and pt0[2] == "<" and pt1[2] == ">":
                 dsbtype = "Insertions_case3"
                 dtype_list.append(dsbtype)
                 print('\t'.join(map(str, pt0)), '\t'.join(map(str, pt1)), svtype0, svtype1, dsbtype)

@@ -401,6 +401,9 @@ def merge(
 @click.option(
     "-l", "--svlen", required=False, default="100", type=str, help="minimum sv length"
 )
+@click.option(
+    "-s", "--size", is_flag=True, help="size stratified evaluation"
+)
 @click.option("-c", required=False, default=0, type=int, help="minimum sv counts")
 @click.option("-w", required=False, default="500", type=str, help="window size")
 @click.option(
@@ -434,6 +437,7 @@ def merge(
 def eval(
     w: str,
     svlen: str,
+    size: bool,
     c: int,
     r: float,
     m: float,
@@ -449,7 +453,9 @@ def eval(
 ):
     """Evaluation of SV calls"""
     from .eval import eval
-
+    print(svlen)
+    print(merge)
+    print(size)
     options = EvalOpt(
         min_len=parseNum(svlen),
         min_count=int(c),
@@ -465,7 +471,7 @@ def eval(
         merge=merge,
         ignore_flt=ignoreflt,
     )
-    eval(filename, options)
+    eval(filename, options, size)
 
 
 @cli.command()
@@ -555,6 +561,116 @@ def filterasm(
 
 
 @cli.command()
+@click.option(
+    "-n", "--name", required=False, default="test", type=str, help="test"
+)
+@click.option(
+    "-l", "--svlen", required=False, default="100", type=str, help="minimum sv length"
+)
+@click.option(
+    "-r",
+    "--ratio",
+    required=False,
+    default=0.8,  # NOTE: in js this might be a bug, these ratio name looks confusing
+    type=float,
+    help="read SVs longer than svlen*FLOAT",
+)
+@click.option("-c", required=False, default=5, type=int, help="minimum sv counts")
+@click.option("-g", required=False, default=5, type=int, help="min group read count")
+@click.option("-F", "--ignoreflt", is_flag=True, help="ignore VCF filter")
+@click.option("-G", "--gt", is_flag=True, help="check GT")
+@click.option("-w", required=False, default=500, type=int, help="window size")
+@click.option("-m", required=False, default=0.6, type=float, help="min sv length ratio")
+@click.option("-b", required=False, default=None, type=str, help="evaluated within the bed file")
+@click.argument("vcf", type=str, nargs=3)
+@click.argument("readid_tsv", type=str, nargs=3)
+@click.argument("bamfile", type=str, nargs=1)
+@click.argument("ref", type=str, nargs=1)
+@click.argument("hap1_denovo_ref", type=str, nargs=1)
+@click.argument("hap2_denovo_ref", type=str, nargs=1)
+@click.argument("graph_ref", type=str, nargs=1)
+@click.argument("workdir", nargs=1)
+def denovo_filterasm(
+    name, svlen, ratio, c, g,
+    ignoreflt, gt, w, m, b,
+    vcf,
+    readid_tsv,
+    bamfile,
+    ref,
+    hap1_denovo_ref,
+    hap2_denovo_ref,
+    graph_ref,
+    workdir
+):
+    """use samtools + seqtk + mappy to filter somatic SV with real-time alignment breakpoint evidences to denovo assembly """
+    print(vcf)
+    print(readid_tsv)
+
+    #vcf = vcf[0]
+    #readid_tsv = readid_tsv[0]
+    from .filtercaller import MinisvReads
+    minisv_reads = MinisvReads(vcf, readid_tsv, bamfile, ref, hap1_denovo_ref, hap2_denovo_ref, graph_ref, workdir)
+    min_len = parseNum(svlen)
+
+    min_read_len = math.floor(min_len * ratio + 0.499)
+    minisv_reads.extract_read_ids(min_read_len, c, ignoreflt, gt)
+    minisv_reads.extract_reads()
+
+    minisv_reads.align_reads_to_grch38()
+    minisv_reads.align_reads_to_self()
+    minisv_reads.align_reads_to_graph()
+
+    # getsv options
+    options = opt(
+        min_mapq=0,
+        min_mapq_end=0,
+        min_len=min_len,
+        min_frac=0.7,
+        max_cnt_10k=5,
+        polyA_pen=5,
+        min_aln_len_end=2000,
+        min_aln_len_mid=50,
+        name=name,
+        cen={}
+    )
+    minisv_reads.parse_raw_sv_self(options)
+
+    options = opt(
+        min_mapq=5,
+        min_mapq_end=30,
+        min_len=min_len,
+        min_frac=0.7,
+        max_cnt_10k=5,
+        polyA_pen=5,
+        min_aln_len_end=2000,
+        min_aln_len_mid=50,
+        name=name,
+        cen={}
+    )
+    minisv_reads.parse_raw_sv_grch38(options)
+    minisv_reads.parse_raw_sv_graph(options)
+    minisv_reads.isec_g(options)
+    minisv_reads.isec_s(options)
+    minisv_reads.isec_gs(options)
+
+    minisv_reads.export_filtered_stat()
+
+    options = unionopt(
+        bed=b,
+        min_len=min_len,
+        read_min_count=c,
+        group_min_count=g,
+        read_len_ratio=ratio,
+        win_size=w,
+        min_len_ratio=m,
+        print_sv=True
+    )
+    minisv_reads.apply_filter_to_vcf()
+    minisv_reads.union_filtered_vcf(min_read_len, options)
+    minisv_reads.save_timings()
+
+
+@cli.command()
 @click.option("-d", is_flag=True, help="verbose option for debug")
 @click.option("-b", type=click.Path(exists=True), help="bed to restrict the comparison")
 @click.option(
@@ -615,8 +731,7 @@ def annot(
         win_size=parseNum(w),
         read_len_ratio=r,
         min_len_ratio=m,  # NOTE: the option are not input
-        dbg=d,
-        bed=gc_read_bed(b) if b is not None else None,
+        bed=None,
         print_err=e,
         print_all=a,
         min_vaf=v,

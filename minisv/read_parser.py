@@ -23,7 +23,7 @@ class alignment:
     coor: Optional[break_end_coord] = None
 
 
-def load_reads(input_file, opt):
+def load_reads(input_file, opt, file_handler=None):
     """
     Load GAF/PAF/SAM file, filter based on mapping quality and minimum map length,
     and sort the lines by cluster location in read.
@@ -47,8 +47,8 @@ def load_reads(input_file, opt):
                 continue
 
             if len(z) > 0 and t[0] != z[0].qname:
-                get_indel(opt, z)
-                get_breakpoint(opt, z)
+                get_indel(opt, z, file_handler)
+                get_breakpoint(opt, z, file_handler)
                 z = []
 
             # parse GAF/PAF
@@ -104,5 +104,5 @@ def load_reads(input_file, opt):
                 # if y.mapq < opt.min_mapq:
                 #    continue
             z.append(y)
-        get_indel(opt, z)
-        get_breakpoint(opt, z)
+        get_indel(opt, z, file_handler)
+        get_breakpoint(opt, z, file_handler)

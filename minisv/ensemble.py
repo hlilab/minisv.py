@@ -3,7 +3,7 @@ import numpy as np
 from .regex import re_info
 
 
-def insilico_truth(msv_union):
+def insilico_truth(msv_union, file_handler=None):
 
     group_ids = []
     file_ids = []
@@ -34,7 +34,7 @@ def insilico_truth(msv_union):
                     # output
                     sorted_lines = sorted(res_list, key=lambda x: (int(x[1]), int(x[4])))
                     med_line = '\t'.join(map(str, sorted_lines[len(sorted_lines) >> 1]))
-                    print(med_line + '\t' + ','.join(file_ids))
+                    print(med_line + '\t' + ','.join(file_ids), file=file_handler)
                     group_ids.append(group_id)
                     file_ids = [file_id]
                     res_list = [elements]

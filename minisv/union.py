@@ -5,8 +5,8 @@ from .filtercaller import parse_readids, parse_svid, parse_msvasm, parse_msvasm_
 from .type import simple_type, get_type
 
 
-def union_sv(msvs, read_min_len, opt):
-    if opt.bed is not None:
+def union_sv(msvs, read_min_len, opt, file_handler=None):
+    if opt.bed is not None and not isinstance(opt.bed, dict):
         opt.bed = gc_read_bed(opt.bed)
     sv = []
 
@@ -99,14 +99,14 @@ def union_sv(msvs, read_min_len, opt):
         cnt[x] += 1
         if opt.print_sv:
             for k in range(len(g)):
-                print("\t".join(map(str, gc_sv2array(g[k]))))
+                print("\t".join(map(str, gc_sv2array(g[k]))), file=file_handler)
 
     if not opt.print_sv:
         for x in range(1, len(cnt)):
             label = []
             for i in range(len(msvs)):
                 label.append(x>>i&1)
-            print("".join(map(str, label)), cnt[x], sep="\t")
+            print("".join(map(str, label)), cnt[x], sep="\t", file=file_handler)
 
 
 def gc_sv2array(s):

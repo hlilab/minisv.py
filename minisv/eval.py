@@ -1,4 +1,5 @@
 import math
+from collections import defaultdict
 import re
 from dataclasses import dataclass
 from typing import Optional
@@ -10,7 +11,20 @@ from .util import is_gzipped
 import gzip
 
 
-def eval(inputfiles, opt):
+
+SIZE_BINS = [
+    (50, 100, "50-100"),
+    (100, 500, "100-500"),
+    (500, 1000, "500-1000"),
+    (1000, 10000, "1k-10k"),
+    (10000, 20000, "10k-20k"),
+    (20000, 100000, "20k-100k"),
+    (100000, float('inf'), ">100k"),
+]
+
+
+
+def eval(inputfiles, opt, size):
     """Evaluate the performance of the test SVs against the base SVs
     Args:
         base: list of base SVs
@@ -27,10 +41,31 @@ def eval(inputfiles, opt):
         base = gc_parse_sv(inputfiles[0], min_read_len, opt.min_count, opt.ignore_flt, opt.check_gt)
         # compared vcf
         test = gc_parse_sv(inputfiles[1], min_read_len, opt.min_count, opt.ignore_flt, opt.check_gt)
-        tot_fn, fn = gc_cmp_sv(opt, test, base, "FN")
-        tot_fp, fp = gc_cmp_sv(opt, base, test, "FP")
+        if not size:
+            tot_fn, fn = gc_cmp_sv(opt, test, base, "FN")
+            tot_fp, fp = gc_cmp_sv(opt, base, test, "FP")
+        else:
+            tot_fn, fn = gc_cmp_sv_wt_sizes(opt, test, base, "FN")
+            tot_fp, fp = gc_cmp_sv_wt_sizes(opt, base, test, "FP")
         print("RN", tot_fn, fn, round(fn / tot_fn, 4), inputfiles[0], sep="\t")
         print("RP", tot_fp, fp, round(fp / tot_fp, 4), inputfiles[1], sep="\t")
+        print("\n# SV size bin breakdown")
+        print("SizeBin\tFN_tot\tFN\tRecall\tFP_tot\tFP\tPrecision")
+    
+        if size:
+            for _, _, bin_name in SIZE_BINS:
+                fn_stats = opt.size_bin_stats.get("FN", {})
+                fp_stats = opt.size_bin_stats.get("FP", {})
+    
+                fn_t = fn_stats['tot'].get(bin_name, 0)
+                fn_e = fn_stats['err'].get(bin_name, 0)
+                fp_t = fp_stats['tot'].get(bin_name, 0)
+                fp_e = fp_stats['err'].get(bin_name, 0)
+    
+                recall = 1 - (fn_e / fn_t) if fn_t > 0 else 1.0
+                prec   = 1 - (fp_e / fp_t) if fp_t > 0 else 1.0
+    
+                print(f"{bin_name}\t{fn_t}\t{fn_e}\t{recall:.4f}\t{fp_t}\t{fp_e}\t{prec:.4f}")
     else:
         # multi-sample mode
         vcf = []
@@ -517,8 +552,133 @@ def gc_cmp_sv(opt, base, test, label):
 
         tot += 1
         n = eval1(opt, h, t.ctg, t.pos, t) + eval1(opt, h, t.ctg2, t.pos2, t)
+
         if n == 0:
             error += 1
+            if opt.print_err:
+                #print(
+                #    label,
+                #    t.ctg,
+                #    t.pos,
+                #    t.ori,
+                #    t.ctg2,
+                #    t.pos2,
+                #    t.SVTYPE,
+                #    t.svid,
+                #    t.SVLEN,
+                #    n,
+                #    t.merge,
+                #    t.count,
+                #    sep="\t",
+                #)
+                print(
+                    label,
+                    t.ctg,
+                    t.pos,
+                    t.ori,
+                    t.ctg2,
+                    t.pos2,
+                    t.SVTYPE,
+                    t.svid,
+                    t.SVLEN,
+                    n,
+                    sep="\t",
+                )
+        if opt.print_all:
+            ##print(t.ctg, t.pos, t.ori, t.ctg2, t.pos2, t.SVTYPE, t.SVLEN, t.svid, n, t.merge, t.count, sep="\t")
+            print(t.ctg, t.pos, t.ori, t.ctg2, t.pos2, t.SVTYPE, t.SVLEN, t.svid, n, sep="\t")
+
+    return [tot, error]
+
+
+def gc_cmp_sv_wt_sizes(opt, base, test, label):
+    """Compare two lists of SVs
+    Args:
+        base: list of base SVs
+        test: list of test SVs
+        opt: EvalConfig object
+    Returns:
+        tuple of (total_fn, fn)
+    """
+    h = {}
+    for i in range(len(base)):
+        s = base[i]
+        if s.ctg not in h:
+            h[s.ctg] = []
+        if s.ctg2 not in h:
+            h[s.ctg2] = []
+        h[s.ctg].append({"st": s.pos, "en": s.pos + 1, "data": s})
+        h[s.ctg2].append({"st": s.pos2, "en": s.pos2 + 1, "data": s})
+
+    for ctg in h:
+        h[ctg] = iit_sort_copy(h[ctg])
+        iit_index(h[ctg])
+
+    tot = error = 0
+
+    bin_tot = {name: 0 for _, _, name in SIZE_BINS}
+    bin_err = {name: 0 for _, _, name in SIZE_BINS}
+    if not hasattr(opt, f'size_bin_stats'):
+        opt.size_bin_stats = {}
+        opt.size_bin_stats[label] = {}
+    else:
+        opt.size_bin_stats[label] = {}
+
+    opt.size_bin_stats[label]['tot'] = defaultdict(int)
+    opt.size_bin_stats[label]['err'] = defaultdict(int)
+
+    for j in range(len(test)):
+        t = test[j]
+
+        # Not long enough for non-BND type
+        # NOTE: here use 100bp as the default length instead of 80
+        if t.SVTYPE != "BND" and abs(t.SVLEN) < opt.min_len:
+            continue
+
+        if t.SVTYPE == "BND" and t.ctg == t.ctg2 and abs(t.SVLEN) < opt.min_len:
+            continue
+
+        if t.count > 0 and t.count < opt.min_count:
+            continue
+
+        # filter by VAF
+        if t.vaf is not None and t.vaf < opt.min_vaf:
+            continue
+
+        if opt.bed is not None:
+            if t.ctg not in opt.bed or t.ctg2 not in opt.bed:
+                continue
+            if len(iit_overlap(opt.bed[t.ctg], t.pos, t.pos + 1)) == 0:
+                continue
+            if len(iit_overlap(opt.bed[t.ctg2], t.pos2, t.pos2 + 1)) == 0:
+                continue
+
+        # === NEW: Assign to size bin ===
+        bin_name = None
+        for min_l, max_l, name in SIZE_BINS:
+            if min_l <= abs(t.SVLEN) <= max_l:
+                bin_name = name
+                break
+
+        # patch translocation
+        if t.ctg != t.ctg2:
+            bin_name = ">100k"
+
+        if bin_name is not None:
+            bin_tot[bin_name] += 1
+            opt.size_bin_stats[label]['tot'][bin_name] += 1
+        else:
+            print('out of case')
+            print(t)
+
+        tot += 1
+
+        n = eval1(opt, h, t.ctg, t.pos, t) + eval1(opt, h, t.ctg2, t.pos2, t)
+        if n == 0:
+            error += 1
+            if bin_name is not None:
+                bin_err[bin_name] += 1
+                opt.size_bin_stats[label]['err'][bin_name] += 1
             if opt.print_err:
                 print(
                     label,

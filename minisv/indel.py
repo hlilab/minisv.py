@@ -81,7 +81,7 @@ def cal_polyA_len(opt, int_seq):
     return polyA_len if polyA_max >= polyT_max else -polyT_len
 
 
-def get_indel(opt, z):
+def get_indel(opt, z, file_handler=None):
     """ """
     if len(z) == 0:
         return
@@ -335,6 +335,7 @@ def get_indel(opt, z):
                 info1 += f";cen_dist={dist_st if dist_st < dist_en else dist_en}"
 
             # 7 columns for indels
+            out = file_handler if file_handler is not None else None
             print(
                 s.ctg,
                 st,
@@ -343,7 +344,7 @@ def get_indel(opt, z):
                 y.mapq,
                 strand,
                 f"{info1};{info2}",
-                sep="\t",
+                sep="\t", file=out
             )
             # indel on different segments
             # NOTE: shall we split the indel into multiple ones? No.

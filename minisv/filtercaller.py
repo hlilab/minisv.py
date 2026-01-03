@@ -1,4 +1,9 @@
 import gzip
+import pandas as pd
+import csv
+import time
+import os
+import mappy as mp
 from .regex import re_info
 import math
 import warnings
@@ -6,6 +11,15 @@ import re
 from .util import is_gzipped, is_vcf
 from .eval import gc_parse_sv, iit_overlap
 from .type import get_type, simple_type
+from pathlib import Path
+import subprocess
+from minisv.read_parser import load_reads
+from .ensemble import insilico_truth
+
+
+# The categories to group by
+categories = ["l", "l+s", "l+g+s", "l+g"]
+callers = ["severus", "savana", "nanomonsv"]
 
 
 def parse_readids(file_path):
@@ -479,3 +493,498 @@ def call_filtermsv(msvtg, msvasm, outstat, asm_count_cutoff=2):
                  print(line.strip())
     ##assert set(msv_all_reads).issubset(read_ids)
     outf.close()
+
+
+
+def hit_to_paf(read_name, read_seq, hit):
+    """
+    Convert a mappy.Alignment object into a PAF line.
+    """
+
+    # Required PAF fields
+    qname = read_name
+    qlen = len(read_seq)
+    qstart = hit.q_st
+    qend = hit.q_en
+
+    rname = hit.ctg
+    rlen = hit.ctg_len
+    rstart = hit.r_st
+    rend = hit.r_en
+
+    strand = "+" if hit.strand == 1 else "-"
+
+    # Optional: minimap2-style tags
+    tp = "P" if hit.is_primary else "S"       # primary or secondary
+    nm = hit.NM if hit.NM is not None else 0
+    ms = hit.mlen                            # number of matching bases
+    bl = hit.blen                            # alignment block length
+    mapq = hit.mapq
+    cigar = hit.cigar_str or "*"
+    md = hit.MD or ""
+    cs = hit.cs or ""
+    ds = hit.ds or ""
+
+    # Build PAF line
+    fields = [
+        qname, qlen, qstart, qend,
+        strand,
+        rname, rlen, rstart, rend,
+        ms, bl, mapq,
+        f"NM:i:{nm}",
+        f"ms:i:{ms}",
+        f"AS:i:{ms - nm}",          # crude score estimate
+        f"nn:i:0",
+        f"tp:A:{tp}",
+        f"cg:Z:{cigar}",
+    ]
+
+    if md:
+        fields.append(f"MD:Z:{md}")
+    if cs:
+        fields.append(f"cs:Z:{cs}")
+    if ds:
+        fields.append(f"ds:Z:{ds}")
+
+    return "\t".join(map(str, fields))
+
+
+import time
+import csv
+import psutil
+import os
+import gc
+from pathlib import Path
+
+class Timer:
+    """Context manager to track time and max memory usage per step"""
+    def __init__(self, name, timings_list):
+        self.name = name
+        self.timings_list = timings_list
+        self.process = psutil.Process(os.getpid())
+
+    def __enter__(self):
+        gc.collect()  # Clean up before measuring
+        self.start_time = time.time()
+        self.start_mem = self.process.memory_info().rss / 1024 / 1024  # MB
+        self.max_mem = self.start_mem
+        return self
+
+    def __exit__(self, *args):
+        gc.collect()
+        elapsed = time.time() - self.start_time
+        current_mem = self.process.memory_info().rss / 1024 / 1024  # MB
+
+        # Update max memory if current is higher
+        self.max_mem = max(self.max_mem, current_mem)
+
+        record = {
+            "step": self.name,
+            "time_sec": round(elapsed, 3),
+            "max_memory_mb": round(self.max_mem, 2)
+        }
+        self.timings_list.append(record)
+
+        print(f"[TIMING] {self.name}: {elapsed:.2f}s | Max Memory: {self.max_mem:.1f} MB")
+
+
+def isec(w, gsvs, file_handler=None):
+    """Usage: minisv isec base.gsv alt.gsv [...]"""
+    from .type import get_type
+
+    g = []
+    # file as filter
+    for gsv in gsvs[1:]:
+        h = {}
+        with gzip.open(gsv, 'rt') as gsv_file:
+            for line in gsv_file:
+                t = line.strip().split("\t")
+                if re.match(r"[><]", t[2]):
+                    col_info = 8
+                else:
+                    col_info = 6
+                name = t[col_info - 3]
+                if name not in h:
+                    h[name] = []
+                h[name].append(get_type(t, col_info))
+        g.append(h)
+    # one read may contain somatic and germline sv
+    # g: [{readname:[sv_dict]}]
+    out = file_handler if file_handler is not None else None
+
+    # file to be filtered
+    with gzip.open(gsvs[0], 'rt') as base_gsv:
+        for line in base_gsv:
+            t = line.strip().split("\t")
+            if re.match(r"[><]", t[2]):
+                col_info = 8
+            else:
+                col_info = 6
+            name = t[col_info - 3]
+            x = get_type(t, col_info)
+            n_found = 0
+
+            for h in g:
+                if name not in h:
+                    break
+
+                a = h[name]
+                found = False
+                for j in range(len(a)):
+                    if x.st - w < a[j].en and a[j].st < x.en + w:
+                        # NOTE: why a[i].flag & 8?? what if base sv is not translocation
+                        if x.flag == 0 or (x.flag & a[j].flag) or (a[j].flag & 8):
+                            found = True
+                if not found:
+                    break
+                n_found += 1
+
+            if n_found == len(g):
+                print(line.strip(), file=out)
+
+
+class MinisvReads:
+    def __init__(self, som_vcfs, readid_tsvs, bam_path, ref, hap1_denovo_ref_path, hap2_denovo_ref_path, 
+                 graph_ref_path = "/hlilab/hli/minigraph/HPRC-r2/CHM13-464.gfa.gz", work_dir="minisv_work", filtered_readcount_cutoff=2):
+        self.som_vcfs = som_vcfs
+        self.readid_tsvs = readid_tsvs
+
+        self.bam_path = Path(bam_path)
+
+        self.ref = Path(ref)
+        self.hap1_denovo_ref_path = Path(hap1_denovo_ref_path)
+        self.hap2_denovo_ref_path = Path(hap2_denovo_ref_path)
+        self.graph_ref_path = Path(graph_ref_path)
+
+        self.work_dir = Path(work_dir)
+        self.work_dir.mkdir(exist_ok=True)
+        self.filtered_readcount_cutoff = filtered_readcount_cutoff
+        self.timings = []
+
+    def extract_read_ids(self, min_read_len, min_count, ignore_flt, check_gt):
+        """ only extract somatic SV read ids """
+        with Timer("extract_read_ids", self.timings):
+            self.read_ids_file = self.work_dir / "readid.names"
+            som_read_ids = set()
+
+            self.read_id_dict = {}
+            for (readid_tsv, vcf) in zip(self.readid_tsvs, self.som_vcfs):
+                assert os.path.exists(readid_tsv), f"{readid_tsv} not exists"
+                assert os.path.exists(vcf), f"{vcf} not exists"
+
+                self.read_id_dict |= parse_readids(readid_tsv)
+                vcf = gc_parse_sv(vcf, min_read_len, min_count, ignore_flt, check_gt)
+
+                for i in range(len(vcf)):
+                    t = vcf[i]
+                    query_svid = str(parse_svid(t.svid))
+                    assert query_svid in self.read_id_dict, 'somatic sv not in read id table'
+                    som_read_ids.add(query_svid)
+
+            read_names = set()
+            for s in list(som_read_ids):
+                read_names |= set(self.read_id_dict[s])
+       
+            with open(self.read_ids_file, "w") as fin:
+                for i in sorted(list(read_names)):
+                    fin.write(f"{i}\n")
+
+   
+    def extract_reads(self):
+        """samtools fastq aln.bam | seqtk subseq - read-names.txt > reads.fq"""
+        with Timer("extract_reads", self.timings):
+            self.fastq_out = self.work_dir / "som_reads.fq.gz"
+            if os.path.exists(self.fastq_out):
+                return
+
+            cmd = f"samtools fastq {self.bam_path} | seqtk subseq - {self.read_ids_file} | gzip  > {self.fastq_out}"
+            subprocess.run(cmd, shell=True, check=True)
+            print(f"Reads extracted to {self.fastq_out}")
+            return
+
+    def build_pooled_reference(self, out_fa="pooled_reference.fa"):
+        with Timer("build_pooled_reference", self.timings):
+            self.pooled_ref = self.work_dir / out_fa
+            with open(self.pooled_ref, "w") as out:
+                for ref in [self.hap1_denovo_ref_path, self.hap2_denovo_ref_path]:
+                    with gzip.open(ref, "rt") as f:
+                        out.write(f.read())
+            return mp.Aligner(str(self.pooled_ref)) # preset??
+
+    def align_reads_to_self(self, paf='denovo_aligned.paf.gz'):
+        with Timer("align_reads_to_denovo", self.timings):
+            self.paf_out = self.work_dir / paf
+            if os.path.exists(self.paf_out):
+                return
+
+            #aligner = self.build_pooled_reference()
+            #if not aligner:
+            #    raise Exception("ERROR: failed to load/build index")
+    
+            #f = gzip.open(self.paf_out, 'wt')
+            #alignments = []
+            #for name, seq, qual in mp.fastx_read(str(self.fastq_out)):
+            #    for hit in aligner.map(seq, MD=False, cs=False, ds=True):
+            #        paf_line = hit_to_paf(name, seq, hit)
+            #        f.write(f"{paf_line}\n")
+            #        alignments.append(paf_line)
+            #f.close()
+            #return alignments
+
+            cmd = f"../1a.alignment_sv_tools/minimap2/minimap2 -t 4 -cxlr:hq <(zcat {self.hap1_denovo_ref_path} {self.hap2_denovo_ref_path}) -I100g --secondary=no {self.fastq_out} | gzip - > {self.paf_out}" 
+            subprocess.run(cmd, shell=True, check=True, executable="/bin/bash")
+            print(f"aligned to self assembly")
+
+    def build_reference(self):
+        return mp.Aligner(str(self.ref))
+
+    def align_reads_to_grch38(self, paf='grch38_aligned.paf.gz'):
+        with Timer("align_reads_to_grch38", self.timings):
+            self.grch38_paf_out = self.work_dir / paf
+            #aligner = self.build_reference()
+
+            #if os.path.exists(self.grch38_paf_out):
+            #    return
+            #if not aligner:
+            #    raise Exception("ERROR: failed to load/build index")
+    
+            #f = gzip.open(self.grch38_paf_out, 'wt')
+            #alignments = []
+            #for name, seq, qual in mp.fastx_read(str(self.fastq_out)):
+            #    for hit in aligner.map(seq, MD=False, cs=False, ds=True):
+            #        paf_line = hit_to_paf(name, seq, hit)
+            #        f.write(f"{paf_line}\n")
+            #        alignments.append(paf_line)
+            #f.close()
+            #return alignments
+            cmd = f"../1a.alignment_sv_tools/minimap2/minimap2 --ds -t 4 -cx map-hifi -s50 {self.ref} {self.fastq_out} | gzip - > {self.grch38_paf_out}" 
+            subprocess.run(cmd, shell=True, check=True, executable="/bin/bash")
+            print(f"aligned to grch38")
+
+    def align_reads_to_graph(self, gaf='denovo_aligned.gaf.gz'):
+        with Timer("align_reads_to_graph", self.timings):
+            self.gaf_out = self.work_dir / gaf
+            if os.path.exists(self.gaf_out):
+                return
+            cmd = f"~/data/pangenome_sv_benchmarking/1a.alignment_sv_tools/minigraph/minigraph -cxlr -t 4 {self.graph_ref_path} {self.fastq_out} | gzip - > {self.gaf_out}"
+            subprocess.run(cmd, shell=True, check=True, executable="/bin/bash")
+            print(f"Reads aligned to {self.graph_ref_path} to generate {self.gaf_out}")
+            return
+
+    def parse_raw_sv_grch38(self, opt, gsv='grch38.gsv.gz'):
+        with Timer("parse_raw_sv_grch38", self.timings):
+            self.grch38_gsv_out = self.work_dir / gsv
+
+            f = gzip.open(self.grch38_gsv_out, 'wt')
+            load_reads(str(self.grch38_paf_out), opt, f)
+            f.close()
+            return
+
+    def parse_raw_sv_self(self, opt, gsv='denovo.gsv.gz'):
+        with Timer("parse_raw_sv_denovo", self.timings):
+            self.denovo_gsv_out = self.work_dir / gsv
+
+            f = gzip.open(self.denovo_gsv_out, 'wt')
+            load_reads(str(self.paf_out), opt, f)
+            f.close()
+            return
+
+    def parse_raw_sv_graph(self, opt, gsv='graph.gsv.gz'):
+        with Timer("parse_raw_sv_graph", self.timings):
+            self.graph_gsv_out = self.work_dir / gsv
+
+            f = gzip.open(self.graph_gsv_out, 'wt')
+            load_reads(str(self.gaf_out), opt, f)
+            f.close()
+            return
+
+    def isec_g(self, opt, msv='l+g.gsv.gz'):
+        # l + g
+        with Timer("isec_graph", self.timings):
+            self.isec_graph_out = self.work_dir / msv
+
+            f = gzip.open(self.isec_graph_out, 'wt')
+            isec(1000, [self.grch38_gsv_out, self.graph_gsv_out], f)
+            f.close()
+            return
+
+    def isec_s(self, opt, msv='l+s.gsv.gz'):
+        # l+s
+        with Timer("isec_graph", self.timings):
+            self.isec_denovo_out = self.work_dir / msv
+
+            f = gzip.open(self.isec_denovo_out, 'wt')
+            isec(1000, [self.grch38_gsv_out, self.denovo_gsv_out], f)
+            f.close()
+            return
+
+    def isec_gs(self, opt, msv='l+g+s.gsv.gz'):
+        # l+s
+        with Timer("isec_gs", self.timings):
+            self.isec_gs_out = self.work_dir / msv
+
+            f = gzip.open(self.isec_gs_out, 'wt')
+            isec(1000, [self.grch38_gsv_out, self.graph_gsv_out, self.denovo_gsv_out], f)
+            f.close()
+            return
+
+    def parse_ids_from_gsv(self, msv):
+        with gzip.open(self.work_dir / msv, 'rt') as fin:
+            for line in fin:
+                t = line.strip().split('\t')
+
+                is_bp = False
+                if re.match(r"[><]", t[2]):
+                    is_bp = True
+
+                col_info = 8 if is_bp else 6
+                name = t[col_info-3]
+                yield name
+
+    def export_filtered_stat(self):
+        """
+        ##        l+s   l+g   l+g+s   severus savana nanomonsv
+        #read1
+        #read2
+        #read3
+        """
+        self.filtered_stat_read = self.work_dir / Path("read_stat.tsv")
+        self.filtered_stat_sv = self.work_dir / Path("sv_stat.tsv")
+
+        self.filtered_sv_records = [self.work_dir / Path("severus.tsv"), self.work_dir / Path("savana.tsv"), self.work_dir / Path("nanomonsv.tsv")]
+
+        with Timer("export_filtered_stat", self.timings):
+            read_names = []
+            ls = list(self.parse_ids_from_gsv(Path("l+s.gsv.gz")))
+            lgs = list(self.parse_ids_from_gsv(Path("l+g+s.gsv.gz")))
+            lg = list(self.parse_ids_from_gsv(Path("l+g.gsv.gz")))
+
+            with open(self.read_ids_file) as inf:
+                for line in inf:
+                    read_names.append(line.strip())
+            df = pd.DataFrame({"read_name": read_names}, index=read_names)
+
+            severus_status = []
+            savana_status = []
+            nanomonsv_status = []
+
+            for (readid_tsv, vcf, status) in zip(self.readid_tsvs, self.som_vcfs, [severus_status, savana_status, nanomonsv_status]):
+                read_to_sv_dict = {}
+                parsed_id_dict = parse_readids(readid_tsv)
+                for k in parsed_id_dict:
+                    for r in parsed_id_dict[k]:
+                        # svid -> read name
+                        read_to_sv_dict[r] = k
+                for r in read_names:
+                    status.append(read_to_sv_dict.get(r, 'other_caller'))
+
+            df.loc[:, 'l'] = True
+            df.loc[:, 'l+s'] = df.index.isin(ls)
+            df.loc[:, 'l+g+s'] = df.index.isin(lgs)
+            df.loc[:, 'l+g'] = df.index.isin(lg)
+            df.loc[:, 'severus'] = severus_status
+            df.loc[:, 'savana'] = savana_status
+            df.loc[:, 'nanomonsv'] = nanomonsv_status
+
+        df.to_csv(str(self.filtered_stat_read), sep='\t')
+
+        print(df.head())
+        #savana  l+s  l+g+s  l+g
+        #0            ID_11080    0      0    0
+        #1             ID_1277    0      0    0
+        #2            ID_13632    8      8    8
+        #3            ID_15396    9      9    9
+        #4            ID_15633    0      0    0
+
+        sv_stats = []
+        for caller, sv_record in zip(callers, self.filtered_sv_records):
+            df_filtered = df.loc[:, categories+[caller]]
+            df_filtered = df_filtered.loc[df_filtered[caller]!='other_caller', :]
+            df_filtered = df_filtered.groupby(caller).sum()
+            df_filtered.to_csv(sv_record, sep='\t')
+            df_filtered_stat = (df_filtered > self.filtered_readcount_cutoff).sum(axis=0)
+            sv_stats.append(df_filtered_stat)
+
+        sv_stats = pd.concat(sv_stats, axis=1)
+        sv_stats.columns = callers
+        sv_stats.to_csv(str(self.filtered_stat_sv), sep='\t')
+        ##            raw_sv l+s l+g l+g+s
+        # severus
+        # nanomonsv
+        # savana
+
+    def apply_filter_to_vcf(self):
+        # l+s
+        with Timer("apply_filter_to_vcf", self.timings):
+            self.filtered_sv_records = [self.work_dir / Path("severus.tsv"), self.work_dir / Path("savana.tsv"), self.work_dir / Path("nanomonsv.tsv")]
+            for (readid_tsv, vcf, filtered_sv_record, caller) in zip(self.readid_tsvs, self.som_vcfs, self.filtered_sv_records, callers):
+                df = pd.read_table(filtered_sv_record, index_col=0)
+                df = df > self.filtered_readcount_cutoff
+                for cat in categories:
+                    svids = df.index[df.loc[:, cat].values]
+                    ## output vcf format with sv ids above
+                    if is_gzipped(vcf):
+                        f = gzip.open(vcf, 'rt')
+                        suffix = '.vcf.gz'
+                    else:
+                        f = open(vcf)
+                        suffix = '.vcf'
+
+                    fout = open(self.work_dir / Path(f"{caller}_{cat}_filtered.vcf"), 'w')
+                    for line in f:
+                        if line[0] == "#":
+                            print(line.strip(), file=fout)
+                            continue
+                        t = line.strip().split("\t")
+                        query_svid = str(parse_svid(t[2]))
+                        if query_svid in svids:
+                            print(line.strip(), file=fout)
+                    f.close()
+                    fout.close()
+            return
+
+    def union_filtered_vcf(self, read_min_len, opt):
+        from .union import union_sv
+        for cat in categories:
+            filtered_vcfs = [ str(self.work_dir / Path(f"{caller}_{cat}_filtered.vcf")) for caller in callers ]
+
+            opt.print_sv = True
+            f = open(self.work_dir / Path(f"{cat}_union.msv"), 'w')
+            union_sv(filtered_vcfs, read_min_len, opt, file_handler=f)
+            f.close()
+
+            opt.print_sv = False
+            f = open(self.work_dir / Path(f"{cat}_union_stat.msv"), 'w')
+            union_sv(filtered_vcfs, read_min_len, opt, file_handler=f)
+            f.close()
+
+            f = open(self.work_dir / Path(f"{cat}_union_dedup.msv"), 'w')
+            insilico_truth(str(self.work_dir / Path(f"{cat}_union.msv")), f)
+            f.close()
+
+    def save_timings(self, tsv_path=None):
+        """Save collected timings to a TSV file"""
+        if not self.timings:
+            print("[WARNING] No timing data collected.")
+            return
+
+        if tsv_path is None:
+            tsv_path = self.work_dir / "minisv_timings.tsv"
+
+        fieldnames = ["step", "time_sec", "max_memory_mb"]
+
+        with open(tsv_path, "w", newline="") as f:
+            writer = csv.DictWriter(f, fieldnames=fieldnames, delimiter="\t")
+            writer.writeheader()
+            for record in self.timings:
+                writer.writerow(record)
+
+        total_time = sum(r["time_sec"] for r in self.timings)
+        overall_max_mem = max(r["max_memory_mb"] for r in self.timings)
+
+        print(f"\n[SUMMARY] Timings saved to: {tsv_path}")
+        print(f"   Total time: {total_time:.2f} seconds")
+        print(f"   Highest memory used: {overall_max_mem:.1f} MB")
+
+## new SV filter from bam -> fastq reads -> gsv
+

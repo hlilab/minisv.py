@@ -2,7 +2,7 @@
 
 ```sh
 
-mamba create -n msvpy python==3.12 poetry
+mamba create -n msvpy python==3.12 poetry seqtk samtools
 conda activate msvpy
 git clone https://github.com/qinqian/minisv.py
 cd minisv.py && make

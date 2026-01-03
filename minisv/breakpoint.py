@@ -5,7 +5,7 @@ from .annotation import cal_cen_dist, cal_cen_overlap
 from .regex import path_seg_pattern
 
 
-def get_breakpoint(opt, z):
+def get_breakpoint(opt, z, file_handler=None):
     """
     opt: option dataclasses
     z: a list of reads in PAF/GAF/SAM
@@ -95,6 +95,9 @@ def get_breakpoint(opt, z):
         # visualize this part
         qoff_l = y0.qen if y0.qen < y1.qst else y1.qst
         qoff_r = y0.qen if y0.qen > y1.qst else y1.qst
+
+        out = file_handler if file_handler is not None else None
+
         print(
             c0.ctg,
             c0.pos,
@@ -106,6 +109,7 @@ def get_breakpoint(opt, z):
             strand2,
             f"{sv_info.str};qoff_l={qoff_l};qoff_r={qoff_r};qgap={qgap};mapq={y0.mapq},{y1.mapq};aln_len={y0.qen-y0.qst},{y1.qen-y1.qst}{cen_str};source={opt.name}",
             sep="\t",
+            file=out
         )
     return None
 

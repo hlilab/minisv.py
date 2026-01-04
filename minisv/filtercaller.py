@@ -645,7 +645,7 @@ def isec(w, gsvs, file_handler=None):
 
 class MinisvReads:
     def __init__(self, som_vcfs, readid_tsvs, bam_path, ref, hap1_denovo_ref_path, hap2_denovo_ref_path, 
-                 graph_ref_path = "/hlilab/hli/minigraph/HPRC-r2/CHM13-464.gfa.gz", work_dir="minisv_work", filtered_readcount_cutoff=2):
+                 graph_ref_path = "/hlilab/hli/minigraph/HPRC-r2/CHM13-464.gfa.gz", work_dir="minisv_work", filtered_readcount_cutoff=2, platform='hifi'):
         self.som_vcfs = som_vcfs
         self.readid_tsvs = readid_tsvs
 
@@ -657,8 +657,9 @@ class MinisvReads:
         self.graph_ref_path = Path(graph_ref_path)
 
         self.work_dir = Path(work_dir)
-        self.work_dir.mkdir(exist_ok=True)
+        self.work_dir.mkdir(parents=True, exist_ok=True)
         self.filtered_readcount_cutoff = filtered_readcount_cutoff
+        self.platform = platform
         self.timings = []
 
     def extract_read_ids(self, min_read_len, min_count, ignore_flt, check_gt):
@@ -731,7 +732,10 @@ class MinisvReads:
             #f.close()
             #return alignments
 
-            cmd = f"../1a.alignment_sv_tools/minimap2/minimap2 -t 4 -cxlr:hq <(zcat {self.hap1_denovo_ref_path} {self.hap2_denovo_ref_path}) -I100g --secondary=no {self.fastq_out} | gzip - > {self.paf_out}" 
+            if self.platform == 'hifi':
+                cmd = f"../../1a.alignment_sv_tools/minimap2/minimap2 --ds -t 4 -cx map-hifi -s50 <(zcat {self.hap1_denovo_ref_path} {self.hap2_denovo_ref_path}) -I100g --secondary=no {self.fastq_out} | gzip - > {self.paf_out}" 
+            else:
+                cmd = f"../../1a.alignment_sv_tools/minimap2/minimap2 --ds -t 4 -cx lr:hq <(zcat {self.hap1_denovo_ref_path} {self.hap2_denovo_ref_path}) -I100g --secondary=no {self.fastq_out} | gzip - > {self.paf_out}" 
             subprocess.run(cmd, shell=True, check=True, executable="/bin/bash")
             print(f"aligned to self assembly")
 
@@ -757,7 +761,11 @@ class MinisvReads:
             #        alignments.append(paf_line)
             #f.close()
             #return alignments
-            cmd = f"../1a.alignment_sv_tools/minimap2/minimap2 --ds -t 4 -cx map-hifi -s50 {self.ref} {self.fastq_out} | gzip - > {self.grch38_paf_out}" 
+
+            if self.platform == 'hifi':
+                cmd = f"../../1a.alignment_sv_tools/minimap2/minimap2 --ds -t 4 -cx map-hifi -s50 {self.ref} {self.fastq_out} | gzip - > {self.grch38_paf_out}" 
+            else:
+                cmd = f"../../1a.alignment_sv_tools/minimap2/minimap2 --ds -t 4 -cx lr:hq {self.ref} {self.fastq_out} | gzip - > {self.grch38_paf_out}" 
             subprocess.run(cmd, shell=True, check=True, executable="/bin/bash")
             print(f"aligned to grch38")
 
@@ -766,7 +774,7 @@ class MinisvReads:
             self.gaf_out = self.work_dir / gaf
             if os.path.exists(self.gaf_out):
                 return
-            cmd = f"~/data/pangenome_sv_benchmarking/1a.alignment_sv_tools/minigraph/minigraph -cxlr -t 4 {self.graph_ref_path} {self.fastq_out} | gzip - > {self.gaf_out}"
+            cmd = f"../../1a.alignment_sv_tools/minigraph/minigraph -cxlr -t 4 {self.graph_ref_path} {self.fastq_out} | gzip - > {self.gaf_out}"
             subprocess.run(cmd, shell=True, check=True, executable="/bin/bash")
             print(f"Reads aligned to {self.graph_ref_path} to generate {self.gaf_out}")
             return

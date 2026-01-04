@@ -568,6 +568,9 @@ def filterasm(
     "-l", "--svlen", required=False, default="100", type=str, help="minimum sv length"
 )
 @click.option(
+   "-p", "--platform", required=False, default="hifi", type=str, help="sequencing platform (default:hifi)"
+)
+@click.option(
     "-r",
     "--ratio",
     required=False,
@@ -591,7 +594,7 @@ def filterasm(
 @click.argument("graph_ref", type=str, nargs=1)
 @click.argument("workdir", nargs=1)
 def denovo_filterasm(
-    name, svlen, ratio, c, g,
+    name, svlen, platform, ratio, c, g,
     ignoreflt, gt, w, m, b,
     vcf,
     readid_tsv,
@@ -609,7 +612,9 @@ def denovo_filterasm(
     #vcf = vcf[0]
     #readid_tsv = readid_tsv[0]
     from .filtercaller import MinisvReads
-    minisv_reads = MinisvReads(vcf, readid_tsv, bamfile, ref, hap1_denovo_ref, hap2_denovo_ref, graph_ref, workdir)
+    asm_read_cutoff = 2
+
+    minisv_reads = MinisvReads(vcf, readid_tsv, bamfile, ref, hap1_denovo_ref, hap2_denovo_ref, graph_ref, workdir, asm_read_cutoff, platform)
     min_len = parseNum(svlen)
 
     min_read_len = math.floor(min_len * ratio + 0.499)

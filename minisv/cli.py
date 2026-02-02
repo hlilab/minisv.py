@@ -25,6 +25,7 @@ __version__ = "0.1.2"
 @dataclass
 class opt:
     cen: dict
+    bed: Optional[str] = None
     min_mapq: int = 5
     min_mapq_end: int = 30
     min_frac: float = 0.7
@@ -578,24 +579,29 @@ def filterasm(
     type=float,
     help="read SVs longer than svlen*FLOAT",
 )
-@click.option("-c", required=False, default=5, type=int, help="minimum sv counts")
+@click.option("-c", required=False, default=3, type=int, help="minimum sv counts")
 @click.option("-g", required=False, default=5, type=int, help="min group read count")
+@click.option("--uc", required=False, default=5, type=int, help="union sv counts")
 @click.option("-F", "--ignoreflt", is_flag=True, help="ignore VCF filter")
 @click.option("-G", "--gt", is_flag=True, help="check GT")
 @click.option("-w", required=False, default=500, type=int, help="window size")
 @click.option("-m", required=False, default=0.6, type=float, help="min sv length ratio")
-@click.option("-b", required=False, default=None, type=str, help="evaluated within the bed file")
-@click.argument("vcf", type=str, nargs=3)
-@click.argument("readid_tsv", type=str, nargs=3)
+@click.option("-b", required=False, default=None, type=str, help="union and evaluated within the high confident bed file")
+@click.option("--maskb", required=False, default=None, type=str, help="centromere bed file to mask the grch38-based sv signal")
+@click.option("--mm2", required=True, default=None, type=str, help="minimap2 path")
+@click.option("--mg", required=True, default=None, type=str, help="minigraph path")
+@click.option("--vcf", type=str, nargs=4, required=True, help="Exactly 4 VCFs following the order of severus savana nanomonsv sniffles2")
+@click.option("--readid_tsv", type=str, nargs=4, required=True, help="Exactly 4 read-id TSV files corresponding to the VCFs")
 @click.argument("bamfile", type=str, nargs=1)
 @click.argument("ref", type=str, nargs=1)
 @click.argument("hap1_denovo_ref", type=str, nargs=1)
 @click.argument("hap2_denovo_ref", type=str, nargs=1)
 @click.argument("graph_ref", type=str, nargs=1)
 @click.argument("workdir", nargs=1)
-def denovo_filterasm(
-    name, svlen, platform, ratio, c, g,
-    ignoreflt, gt, w, m, b,
+def sv_cross_ref_filter(
+    name, svlen, platform, ratio, c, uc, g,
+    ignoreflt, gt, w, m, b, maskb,
+    mm2, mg,
     vcf,
     readid_tsv,
     bamfile,
@@ -609,19 +615,25 @@ def denovo_filterasm(
     print(vcf)
     print(readid_tsv)
 
+    assert len(vcf) == 4
+    assert len(vcf) == len(readid_tsv)
+
     #vcf = vcf[0]
     #readid_tsv = readid_tsv[0]
     from .filtercaller import MinisvReads
-    asm_read_cutoff = 2
+    asm_read_cutoff = c
 
-    minisv_reads = MinisvReads(vcf, readid_tsv, bamfile, ref, hap1_denovo_ref, hap2_denovo_ref, graph_ref, workdir, asm_read_cutoff, platform)
+    minisv_reads = MinisvReads(vcf, readid_tsv, bamfile, ref, hap1_denovo_ref, hap2_denovo_ref, graph_ref, workdir, asm_read_cutoff, platform, mm2, mg)
     min_len = parseNum(svlen)
 
     min_read_len = math.floor(min_len * ratio + 0.499)
-    minisv_reads.extract_read_ids(min_read_len, c, ignoreflt, gt)
+    minisv_reads.extract_read_ids(b, min_len, min_read_len, c, ignoreflt, gt)
     minisv_reads.extract_reads()
 
-    minisv_reads.align_reads_to_grch38()
+    #NOTE:svcall+l
+    #minisv_reads.align_reads_to_grch38()
+  
+    #use svcall+s
     minisv_reads.align_reads_to_self()
     minisv_reads.align_reads_to_graph()
 
@@ -639,38 +651,55 @@ def denovo_filterasm(
         cen={}
     )
     minisv_reads.parse_raw_sv_self(options)
+    if maskb is not None:
+        parse_centromere(maskb, options.cen)
+    if b is not None:
+        options.bed = b
 
-    options = opt(
-        min_mapq=5,
-        min_mapq_end=30,
-        min_len=min_len,
-        min_frac=0.7,
-        max_cnt_10k=5,
-        polyA_pen=5,
-        min_aln_len_end=2000,
-        min_aln_len_mid=50,
-        name=name,
-        cen={}
-    )
-    minisv_reads.parse_raw_sv_grch38(options)
+    options.min_mapq = 5
+    options.min_mapq_end = 30
+
+    #minisv_reads.parse_raw_sv_grch38(options)
     minisv_reads.parse_raw_sv_graph(options)
-    minisv_reads.isec_g(options)
-    minisv_reads.isec_s(options)
-    minisv_reads.isec_gs(options)
 
-    minisv_reads.export_filtered_stat()
+    # only svcall + g
+    #      svcall + s
+    #      svcall + gs
+    #minisv_reads.isec_g(options, w)
+    #minisv_reads.isec_s(options, w)
+    minisv_reads.isec_gs(options, w)
+
+    print(w)
+    for cutoff in range(int(c), int(uc)+1):
+        options = EvalOpt(
+            only_readname=False,
+            min_len=parseNum(svlen),
+            min_count=cutoff,
+            win_size=parseNum(str(w)),
+            read_len_ratio=ratio,
+            min_len_ratio=m,  # NOTE: the option are not input
+            dbg=False,
+            bed=gc_read_bed(b) if b is not None else None,
+            print_err=False,
+            print_all=True,
+            min_vaf=0,
+            check_gt=False,
+            merge=False,
+            ignore_flt=False,
+            svid=""
+        )
+        minisv_reads.othercaller_filterasm(options)
 
     options = unionopt(
         bed=b,
         min_len=min_len,
-        read_min_count=c,
+        read_min_count=uc, # 
         group_min_count=g,
         read_len_ratio=ratio,
         win_size=w,
         min_len_ratio=m,
         print_sv=True
     )
-    minisv_reads.apply_filter_to_vcf()
     minisv_reads.union_filtered_vcf(min_read_len, options)
     minisv_reads.save_timings()
 
@@ -1045,7 +1074,7 @@ def ensembleunion(msvunion):
 @cli.command()
 @click.option("-b", required=False, default=None, type=str, help="evaluated within the bed file")
 @click.option("-l", required=False, default=100, type=int, help="minimum length")
-@click.option("-c", required=False, default=2, type=int, help="min read count")
+@click.option("-c", required=False, default=5, type=int, help="min read count")
 @click.option("-g", required=False, default=5, type=int, help="min group read count")
 @click.option("-r", required=False, default=0.8, type=float, help="read length ratio")
 @click.option("-w", required=False, default=500, type=int, help="window size")

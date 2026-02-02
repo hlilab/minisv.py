@@ -827,10 +827,10 @@ def gc_cmp_same_sv1(win_size, min_len_ratio, b, t):
 
     # check length
     # NOTE: length should be similar to each other
-    len_check = (
+    len_check = (abs(abs(b.SVLEN) - abs(t.SVLEN)) <= 1000) or (
         abs(b.SVLEN) >= abs(t.SVLEN) * min_len_ratio
         and abs(t.SVLEN) >= abs(b.SVLEN) * min_len_ratio
-    ) or abs(abs(b.SVLEN) - abs(t.SVLEN)) < 1000
+    )
 
     if b.SVTYPE != "BND" and t.SVTYPE != "BND" and (not len_check):
         return False

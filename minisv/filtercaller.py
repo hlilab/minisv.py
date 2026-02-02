@@ -9,7 +9,9 @@ import math
 import warnings
 import re
 from .util import is_gzipped, is_vcf
-from .eval import gc_parse_sv, iit_overlap
+from .eval import gc_parse_sv, iit_overlap, gc_read_bed
+from .merge import parse_sv
+
 from .type import get_type, simple_type
 from pathlib import Path
 import subprocess
@@ -18,7 +20,7 @@ from .ensemble import insilico_truth
 
 
 # The categories to group by
-categories = ["l", "l+s", "l+g+s", "l+g"]
+categories = ["l+s", "l+g+s", "l+g"]
 callers = ["severus", "savana", "nanomonsv"]
 
 
@@ -167,7 +169,7 @@ def parse_svid(svid):
     return query_svid
         #raise Exception("not support yet")
 
-def othercaller_filterasm(vcf_file, opt, readidtsv, msvasm, outstat, consensus_sv_ids):
+def othercaller_filterasm(vcf_file, opt, readidtsv, msvasm, outstat, consensus_sv_ids, out_filtered_vcf = None):
     """
     vcf: input vcf, support Severus, Sniffles, nanomonsv, and savana
     consensus_sv_ids: consensus SV ids from minisv annot
@@ -232,6 +234,7 @@ def othercaller_filterasm(vcf_file, opt, readidtsv, msvasm, outstat, consensus_s
         ol_readn = set(parsed_id_dict[query_svid]) & read_ids
 
         read_num_wt_type = 0
+        filt_cnt = len(ol_readn)
         t_type_flag = simple_type(t.SVTYPE, t.ctg, t.ctg2)
         for read_i in ol_readn:
             assert read_i in read_ids_withtype
@@ -249,11 +252,10 @@ def othercaller_filterasm(vcf_file, opt, readidtsv, msvasm, outstat, consensus_s
                     read_num_wt_type += 1
                     break
 
-                len_check = (
+                len_check = (abs(abs(sv_j.len) - abs(t.SVLEN)) <= 1000) or (
                     abs(sv_j.len) >= abs(t.SVLEN) * opt.min_len_ratio
                     and abs(t.SVLEN) >= abs(sv_j.len) * opt.min_len_ratio
-                ) or abs(abs(sv_j.len) - abs(t.SVLEN)) <= 1000
-
+                ) 
                 # strict sv type and length check
                 if (t_type_flag & sv_j.flag) and len_check:
                     read_num_wt_type += 1
@@ -284,32 +286,9 @@ def othercaller_filterasm(vcf_file, opt, readidtsv, msvasm, outstat, consensus_s
                                 read_num_wt_type += 1
                                 break
 
-                #debug INS
-                #if t.svid == 'severus_INS16922':
-                #     print(t.svid, read_i, sv_j.flag, sv_j.len, t.SVLEN, t.SVTYPE, len_check, abs(t.SVLEN) * opt.min_len_ratio, abs(sv_j.len) * opt.min_len_ratio, opt.min_len_ratio)
-                #if t.svid == 'severus_INS12685':
-                #     print(t.svid, read_i, sv_j.flag, sv_j.len, t.SVLEN, t.SVTYPE, len_check, abs(t.SVLEN) * opt.min_len_ratio, abs(sv_j.len) * opt.min_len_ratio, opt.min_len_ratio)
-                #if t.svid == 'severus_INS17052':
-                #     print(t.svid, read_i, sv_j.flag, sv_j.len, t.SVLEN, t.SVTYPE, len_check, abs(t.SVLEN) * opt.min_len_ratio, abs(sv_j.len) * opt.min_len_ratio, opt.min_len_ratio)
-                #if t.svid == 'severus_INS21634':
-                #     print(t.svid, read_i, sv_j.flag, sv_j.len, t.SVLEN, sv_j.type, t.SVTYPE, len_check, abs(t.SVLEN) * opt.min_len_ratio, abs(sv_j.len) * opt.min_len_ratio, opt.min_len_ratio)
-                #if t.svid == 'severus_BND225_1':
-                #     print(t.svid, read_i, sv_j.flag, t_type_flag, sv_j.len, t.SVLEN, sv_j.type, t.SVTYPE, len_check, abs(t.SVLEN) * opt.min_len_ratio, abs(sv_j.len) * opt.min_len_ratio, opt.min_len_ratio)
-                #if t.svid == 'r_319_0':
-                #     print(t.svid, read_i, sv_j.flag, t_type_flag, sv_j.len, t.SVLEN, sv_j.type, t.SVTYPE, len_check, abs(t.SVLEN) * opt.min_len_ratio, abs(sv_j.len) * opt.min_len_ratio, opt.min_len_ratio, read_num_wt_type)
-                #if t.svid == 'severus_INS21583':
-                #if t.svid == 'severus_INS21634':
-                #if t.svid == 'severus_INS13454':
-                #if t.svid == 'severus_INS13602':
-                #if t.svid == 'i_1179':
-                #     print(t.svid, read_i, sv_j.flag, t_type_flag, sv_j.len, t.SVLEN, sv_j.type, t.SVTYPE, len_check, abs(t.SVLEN) * opt.min_len_ratio, abs(sv_j.len) * opt.min_len_ratio, opt.min_len_ratio, read_num_wt_type)
-
-                #severus_INS10090 m84039_230414_235240_s2/244716513/ccs 8 1 0 1760 BND INS False 1056.0 0.0 0.6 0
-                if t.svid == opt.svid:
-                    print(t.svid, read_i, sv_j.flag, t_type_flag, sv_j.len, t.SVLEN, sv_j.type, t.SVTYPE, len_check, abs(t.SVLEN) * opt.min_len_ratio, abs(sv_j.len) * opt.min_len_ratio, opt.min_len_ratio, read_num_wt_type)
-
-
-        filt_cnt = len(ol_readn)
+            assert read_num_wt_type <= filt_cnt
+            if t.svid == opt.svid and opt.svid != "":
+                print(t.svid, read_i, sv_j.flag, t_type_flag, sv_j.len, t.SVLEN, sv_j.type, t.SVTYPE, len_check, abs(t.SVLEN) * opt.min_len_ratio, abs(sv_j.len) * opt.min_len_ratio, opt.min_len_ratio, read_num_wt_type)
 
         if opt.print_all:
             outf.write('\t'.join(map(str, [t.SVLEN, classify_sv_len(abs(t.SVLEN)), t.svid, is_consensus, t.SVTYPE, t.ctg, t.pos, t.ori, t.ctg2, t.pos2, 
@@ -324,6 +303,9 @@ def othercaller_filterasm(vcf_file, opt, readidtsv, msvasm, outstat, consensus_s
 
     outf.close()
 
+    if opt.svid != "":
+        return
+
     assert set(all_ids).issubset(set(parsed_id_dict.keys()))
     assert set(all_ids_onlyname).issubset(set(parsed_id_dict.keys()))
     ## output vcf format with sv ids above
@@ -335,7 +317,7 @@ def othercaller_filterasm(vcf_file, opt, readidtsv, msvasm, outstat, consensus_s
     for line in f:
         line_no += 1
         if line[0] == "#":
-            print(line.strip())
+            print(line.strip(), file=out_filtered_vcf)
             continue
         if 'avg_mapq' in line: # MSV
             query_svid = str(parse_svid(line_no))
@@ -347,7 +329,7 @@ def othercaller_filterasm(vcf_file, opt, readidtsv, msvasm, outstat, consensus_s
                 print(line.strip())
         else:
             if query_svid in all_ids:
-                print(line.strip())
+                print(line.strip(), file=out_filtered_vcf)
     f.close()
 
 
@@ -645,9 +627,11 @@ def isec(w, gsvs, file_handler=None):
 
 class MinisvReads:
     def __init__(self, som_vcfs, readid_tsvs, bam_path, ref, hap1_denovo_ref_path, hap2_denovo_ref_path, 
-                 graph_ref_path = "/hlilab/hli/minigraph/HPRC-r2/CHM13-464.gfa.gz", work_dir="minisv_work", filtered_readcount_cutoff=2, platform='hifi'):
+                 graph_ref_path = "/hlilab/hli/minigraph/HPRC-r2/CHM13-464.gfa.gz", work_dir="minisv_work", filtered_readcount_cutoff=2, platform='hifi', mm2="minimap2", mg="minigraph"):
         self.som_vcfs = som_vcfs
         self.readid_tsvs = readid_tsvs
+        self.mm2 = mm2
+        self.mg = mg
 
         self.bam_path = Path(bam_path)
 
@@ -662,9 +646,12 @@ class MinisvReads:
         self.platform = platform
         self.timings = []
 
-    def extract_read_ids(self, min_read_len, min_count, ignore_flt, check_gt):
+    def extract_read_ids(self, bed, min_len, min_read_len, min_count, ignore_flt, check_gt):
         """ only extract somatic SV read ids """
         with Timer("extract_read_ids", self.timings):
+            if bed is not None and not isinstance(bed, dict):
+                bed = gc_read_bed(bed)
+
             self.read_ids_file = self.work_dir / "readid.names"
             som_read_ids = set()
 
@@ -678,6 +665,25 @@ class MinisvReads:
 
                 for i in range(len(vcf)):
                     t = vcf[i]
+                    # Not long enough for non-BND type
+                    # NOTE: here use 100bp as the default length instead of 80
+                    if t.SVTYPE != "BND" and abs(t.SVLEN) < min_len:
+                        continue
+
+                    if t.SVTYPE == "BND" and t.ctg == t.ctg2 and abs(t.SVLEN) < min_len:
+                        continue
+
+                    if t.count > 0 and t.count < min_count:
+                        continue
+
+                    if bed is not None:
+                        if t.ctg not in bed or t.ctg2 not in bed:
+                            continue
+                        if len(iit_overlap(bed[t.ctg], t.pos, t.pos + 1)) == 0:
+                            continue
+                        if len(iit_overlap(bed[t.ctg2], t.pos2, t.pos2 + 1)) == 0:
+                            continue
+
                     query_svid = str(parse_svid(t.svid))
                     assert query_svid in self.read_id_dict, 'somatic sv not in read id table'
                     som_read_ids.add(query_svid)
@@ -689,7 +695,6 @@ class MinisvReads:
             with open(self.read_ids_file, "w") as fin:
                 for i in sorted(list(read_names)):
                     fin.write(f"{i}\n")
-
    
     def extract_reads(self):
         """samtools fastq aln.bam | seqtk subseq - read-names.txt > reads.fq"""
@@ -718,24 +723,11 @@ class MinisvReads:
             if os.path.exists(self.paf_out):
                 return
 
-            #aligner = self.build_pooled_reference()
-            #if not aligner:
-            #    raise Exception("ERROR: failed to load/build index")
-    
-            #f = gzip.open(self.paf_out, 'wt')
-            #alignments = []
-            #for name, seq, qual in mp.fastx_read(str(self.fastq_out)):
-            #    for hit in aligner.map(seq, MD=False, cs=False, ds=True):
-            #        paf_line = hit_to_paf(name, seq, hit)
-            #        f.write(f"{paf_line}\n")
-            #        alignments.append(paf_line)
-            #f.close()
-            #return alignments
-
             if self.platform == 'hifi':
-                cmd = f"../../1a.alignment_sv_tools/minimap2/minimap2 --ds -t 4 -cx map-hifi -s50 <(zcat {self.hap1_denovo_ref_path} {self.hap2_denovo_ref_path}) -I100g --secondary=no {self.fastq_out} | gzip - > {self.paf_out}" 
+                cmd = f"{self.mm2} --ds -t 4 -cx map-hifi -s50 <(zcat {self.hap1_denovo_ref_path} {self.hap2_denovo_ref_path}) -I100g --secondary=no {self.fastq_out} | gzip - > {self.paf_out}" 
             else:
-                cmd = f"../../1a.alignment_sv_tools/minimap2/minimap2 --ds -t 4 -cx lr:hq <(zcat {self.hap1_denovo_ref_path} {self.hap2_denovo_ref_path}) -I100g --secondary=no {self.fastq_out} | gzip - > {self.paf_out}" 
+                cmd = f"{self.mm2} --ds -t 4 -cx lr:hq <(zcat {self.hap1_denovo_ref_path} {self.hap2_denovo_ref_path}) -I100g --secondary=no {self.fastq_out} | gzip - > {self.paf_out}" 
+            #cmd = f"{self.mm2} --ds -t 4 -cx lr:hq <(zcat {self.hap1_denovo_ref_path} {self.hap2_denovo_ref_path}) -I100g --secondary=no {self.fastq_out} | gzip - > {self.paf_out}" 
             subprocess.run(cmd, shell=True, check=True, executable="/bin/bash")
             print(f"aligned to self assembly")
 
@@ -745,27 +737,13 @@ class MinisvReads:
     def align_reads_to_grch38(self, paf='grch38_aligned.paf.gz'):
         with Timer("align_reads_to_grch38", self.timings):
             self.grch38_paf_out = self.work_dir / paf
-            #aligner = self.build_reference()
-
-            #if os.path.exists(self.grch38_paf_out):
-            #    return
-            #if not aligner:
-            #    raise Exception("ERROR: failed to load/build index")
-    
-            #f = gzip.open(self.grch38_paf_out, 'wt')
-            #alignments = []
-            #for name, seq, qual in mp.fastx_read(str(self.fastq_out)):
-            #    for hit in aligner.map(seq, MD=False, cs=False, ds=True):
-            #        paf_line = hit_to_paf(name, seq, hit)
-            #        f.write(f"{paf_line}\n")
-            #        alignments.append(paf_line)
-            #f.close()
-            #return alignments
+            if os.path.exists(self.grch38_paf_out):
+                return
 
             if self.platform == 'hifi':
-                cmd = f"../../1a.alignment_sv_tools/minimap2/minimap2 --ds -t 4 -cx map-hifi -s50 {self.ref} {self.fastq_out} | gzip - > {self.grch38_paf_out}" 
+                cmd = f"{self.mm2} --ds -t 4 -cx map-hifi -s50 {self.ref} {self.fastq_out} | gzip - > {self.grch38_paf_out}" 
             else:
-                cmd = f"../../1a.alignment_sv_tools/minimap2/minimap2 --ds -t 4 -cx lr:hq {self.ref} {self.fastq_out} | gzip - > {self.grch38_paf_out}" 
+                cmd = f"{self.mm2} --ds -t 4 -cx lr:hq {self.ref} {self.fastq_out} | gzip - > {self.grch38_paf_out}" 
             subprocess.run(cmd, shell=True, check=True, executable="/bin/bash")
             print(f"aligned to grch38")
 
@@ -774,18 +752,57 @@ class MinisvReads:
             self.gaf_out = self.work_dir / gaf
             if os.path.exists(self.gaf_out):
                 return
-            cmd = f"../../1a.alignment_sv_tools/minigraph/minigraph -cxlr -t 4 {self.graph_ref_path} {self.fastq_out} | gzip - > {self.gaf_out}"
+            cmd = f"{self.mg} -cxlr -t 4 {self.graph_ref_path} {self.fastq_out} | gzip - > {self.gaf_out}"
             subprocess.run(cmd, shell=True, check=True, executable="/bin/bash")
             print(f"Reads aligned to {self.graph_ref_path} to generate {self.gaf_out}")
             return
 
-    def parse_raw_sv_grch38(self, opt, gsv='grch38.gsv.gz'):
+    def parse_raw_sv_grch38(self, opt, gsv='grch38.gsv.gz',
+                            filtered_grch38_gsv='grch38_filtered.gsv.gz'):
         with Timer("parse_raw_sv_grch38", self.timings):
             self.grch38_gsv_out = self.work_dir / gsv
-
+            self.filtered_grch38_gsv_out = self.work_dir / filtered_grch38_gsv
+            print("**********************")
+            print(self.filtered_grch38_gsv_out)
             f = gzip.open(self.grch38_gsv_out, 'wt')
             load_reads(str(self.grch38_paf_out), opt, f)
             f.close()
+
+            ##opt.bed = gc_read_bed(opt.bed) if b is not None else None
+            print("**************")
+            print(opt.cen)
+            print(opt.bed)
+            print("**************")
+
+            if opt.bed is not None and not isinstance(opt.bed, dict):
+                opt.bed = gc_read_bed(opt.bed)
+
+            if opt.bed is not None or opt.cen is not None:
+                f = gzip.open(self.filtered_grch38_gsv_out, 'wt')
+                with gzip.open(self.grch38_gsv_out, "rt") as fin:
+                    for line in fin:
+                        if opt.cen is not None:
+                            t = line.strip().split("\t")
+                            v = parse_sv(t)
+
+                            #NOTE: test if we do not use centromere filtering
+                            ## Step 1. post filter grch38-based sv signals by centromere
+                            if v.cen_overlap is not None and v.cen_overlap > 0:
+                                continue
+                            if v.cen_dist is not None and v.cen_dist <= 5e5:
+                                continue
+
+                            ### Step 2. filter by overlapping with high conf region
+                            #if opt.bed is not None:
+                            #    if v.ctg not in opt.bed or v.ctg2 not in opt.bed:
+                            #        continue
+                            #    if len(iit_overlap(opt.bed[v.ctg], v.pos, v.pos + 1)) == 0:
+                            #        continue
+                            #    if len(iit_overlap(opt.bed[v.ctg2], v.pos2, v.pos2 + 1)) == 0:
+                            #        continue
+                            # TODO Step 3: filtered by SV typing consistency between minisv/severus/nanomonsv...
+                            print(line.strip(), file=f)
+                f.close()
             return
 
     def parse_raw_sv_self(self, opt, gsv='denovo.gsv.gz'):
@@ -806,33 +823,43 @@ class MinisvReads:
             f.close()
             return
 
-    def isec_g(self, opt, msv='l+g.gsv.gz'):
+    def isec_g(self, opt, w, msv='l+g.gsv.gz'):
         # l + g
         with Timer("isec_graph", self.timings):
             self.isec_graph_out = self.work_dir / msv
 
             f = gzip.open(self.isec_graph_out, 'wt')
-            isec(1000, [self.grch38_gsv_out, self.graph_gsv_out], f)
+            if opt.bed is not None or opt.cen is not None:
+                isec(w, [self.filtered_grch38_gsv_out, self.graph_gsv_out], f)
+            else:
+                isec(w, [self.grch38_gsv_out, self.graph_gsv_out], f)
             f.close()
             return
 
-    def isec_s(self, opt, msv='l+s.gsv.gz'):
+    def isec_s(self, opt, w, msv='l+s.gsv.gz'):
         # l+s
         with Timer("isec_graph", self.timings):
             self.isec_denovo_out = self.work_dir / msv
 
             f = gzip.open(self.isec_denovo_out, 'wt')
-            isec(1000, [self.grch38_gsv_out, self.denovo_gsv_out], f)
+            if opt.bed is not None or opt.cen is not None:
+                isec(w, [self.filtered_grch38_gsv_out, self.denovo_gsv_out], f)
+            else:
+                isec(w, [self.grch38_gsv_out, self.denovo_gsv_out], f)
             f.close()
             return
 
-    def isec_gs(self, opt, msv='l+g+s.gsv.gz'):
+    def isec_gs(self, opt, w, msv='gs.gsv.gz'):
         # l+s
         with Timer("isec_gs", self.timings):
             self.isec_gs_out = self.work_dir / msv
 
             f = gzip.open(self.isec_gs_out, 'wt')
-            isec(1000, [self.grch38_gsv_out, self.graph_gsv_out, self.denovo_gsv_out], f)
+            #if opt.bed is not None or opt.cen is not None:
+            #    isec(w, [self.filtered_grch38_gsv_out, self.graph_gsv_out, self.denovo_gsv_out], f)
+            #else:
+            #    isec(w, [self.grch38_gsv_out, self.graph_gsv_out, self.denovo_gsv_out], f)
+            isec(w, [self.graph_gsv_out, self.denovo_gsv_out], f)
             f.close()
             return
 
@@ -849,112 +876,51 @@ class MinisvReads:
                 name = t[col_info-3]
                 yield name
 
-    def export_filtered_stat(self):
+    def othercaller_filterasm(self, opt):
+        """ the same interface as the former filterasm 
         """
-        ##        l+s   l+g   l+g+s   severus savana nanomonsv
-        #read1
-        #read2
-        #read3
-        """
-        self.filtered_stat_read = self.work_dir / Path("read_stat.tsv")
-        self.filtered_stat_sv = self.work_dir / Path("sv_stat.tsv")
 
-        self.filtered_sv_records = [self.work_dir / Path("severus.tsv"), self.work_dir / Path("savana.tsv"), self.work_dir / Path("nanomonsv.tsv")]
+        # filter each caller separately instead of jointly 
+        # joint filtering is error-prone
+        # l_only = self.work_dir / Path("grch38_filtered.gsv.gz") # filtered by centromere dist
+        # ls = self.work_dir / Path("l+s.gsv.gz")
+        # lgs = self.work_dir / Path("l+g+s.gsv.gz")
+        # lg = self.work_dir / Path("l+g.gsv.gz")
 
-        with Timer("export_filtered_stat", self.timings):
-            read_names = []
-            ls = list(self.parse_ids_from_gsv(Path("l+s.gsv.gz")))
-            lgs = list(self.parse_ids_from_gsv(Path("l+g+s.gsv.gz")))
-            lg = list(self.parse_ids_from_gsv(Path("l+g.gsv.gz")))
+        ls = self.work_dir / Path("denovo.gsv.gz")
+        lgs = self.work_dir / Path("gs.gsv.gz")
+        lg = self.work_dir / Path("graph.gsv.gz")
 
-            with open(self.read_ids_file) as inf:
-                for line in inf:
-                    read_names.append(line.strip())
-            df = pd.DataFrame({"read_name": read_names}, index=read_names)
+        for cat in categories:
+            filtered_vcfs = [ str(self.work_dir / Path(f"{caller}_{cat}_{opt.min_count}_filtered.vcf")) for caller in callers + ['sniffles2'] ]
+            filtered_vcf_stats = [ str(self.work_dir / Path(f"{caller}_{cat}_{opt.min_count}_filtered.stat")) for caller in callers + ['sniffles2'] ]
 
-            severus_status = []
-            savana_status = []
-            nanomonsv_status = []
-
-            for (readid_tsv, vcf, status) in zip(self.readid_tsvs, self.som_vcfs, [severus_status, savana_status, nanomonsv_status]):
-                read_to_sv_dict = {}
-                parsed_id_dict = parse_readids(readid_tsv)
-                for k in parsed_id_dict:
-                    for r in parsed_id_dict[k]:
-                        # svid -> read name
-                        read_to_sv_dict[r] = k
-                for r in read_names:
-                    status.append(read_to_sv_dict.get(r, 'other_caller'))
-
-            df.loc[:, 'l'] = True
-            df.loc[:, 'l+s'] = df.index.isin(ls)
-            df.loc[:, 'l+g+s'] = df.index.isin(lgs)
-            df.loc[:, 'l+g'] = df.index.isin(lg)
-            df.loc[:, 'severus'] = severus_status
-            df.loc[:, 'savana'] = savana_status
-            df.loc[:, 'nanomonsv'] = nanomonsv_status
-
-        df.to_csv(str(self.filtered_stat_read), sep='\t')
-
-        print(df.head())
-        #savana  l+s  l+g+s  l+g
-        #0            ID_11080    0      0    0
-        #1             ID_1277    0      0    0
-        #2            ID_13632    8      8    8
-        #3            ID_15396    9      9    9
-        #4            ID_15633    0      0    0
-
-        sv_stats = []
-        for caller, sv_record in zip(callers, self.filtered_sv_records):
-            df_filtered = df.loc[:, categories+[caller]]
-            df_filtered = df_filtered.loc[df_filtered[caller]!='other_caller', :]
-            df_filtered = df_filtered.groupby(caller).sum()
-            df_filtered.to_csv(sv_record, sep='\t')
-            df_filtered_stat = (df_filtered > self.filtered_readcount_cutoff).sum(axis=0)
-            sv_stats.append(df_filtered_stat)
-
-        sv_stats = pd.concat(sv_stats, axis=1)
-        sv_stats.columns = callers
-        sv_stats.to_csv(str(self.filtered_stat_sv), sep='\t')
-        ##            raw_sv l+s l+g l+g+s
-        # severus
-        # nanomonsv
-        # savana
-
-    def apply_filter_to_vcf(self):
-        # l+s
-        with Timer("apply_filter_to_vcf", self.timings):
-            self.filtered_sv_records = [self.work_dir / Path("severus.tsv"), self.work_dir / Path("savana.tsv"), self.work_dir / Path("nanomonsv.tsv")]
-            for (readid_tsv, vcf, filtered_sv_record, caller) in zip(self.readid_tsvs, self.som_vcfs, self.filtered_sv_records, callers):
-                df = pd.read_table(filtered_sv_record, index_col=0)
-                df = df > self.filtered_readcount_cutoff
-                for cat in categories:
-                    svids = df.index[df.loc[:, cat].values]
-                    ## output vcf format with sv ids above
-                    if is_gzipped(vcf):
-                        f = gzip.open(vcf, 'rt')
-                        suffix = '.vcf.gz'
-                    else:
-                        f = open(vcf)
-                        suffix = '.vcf'
-
-                    fout = open(self.work_dir / Path(f"{caller}_{cat}_filtered.vcf"), 'w')
-                    for line in f:
-                        if line[0] == "#":
-                            print(line.strip(), file=fout)
-                            continue
-                        t = line.strip().split("\t")
-                        query_svid = str(parse_svid(t[2]))
-                        if query_svid in svids:
-                            print(line.strip(), file=fout)
-                    f.close()
-                    fout.close()
-            return
+            if cat == 'l+s':
+                msvasm = ls
+            if cat == 'l+g':
+                msvasm = lg
+            if cat == 'l+g+s':
+                msvasm = lgs
+            for (readid_tsv, vcf, filtered_vcf, outstat) in zip(self.readid_tsvs, self.som_vcfs, filtered_vcfs, filtered_vcf_stats):
+                filtered_vcf = open(filtered_vcf, 'w')
+                othercaller_filterasm(vcf, opt, readid_tsv, msvasm, outstat, consensus_sv_ids="", out_filtered_vcf=filtered_vcf)
+                filtered_vcf.close()
+        return
 
     def union_filtered_vcf(self, read_min_len, opt):
         from .union import union_sv
+
+        opt.print_sv = True
+        f = open(self.work_dir / Path(f"l_only_union.msv"), 'w')
+        union_sv(self.som_vcfs[:3], read_min_len, opt, file_handler=f)
+        f.close()
+        opt.print_sv = False
+        f = open(self.work_dir / Path(f"l_only_union_stat.msv"), 'w')
+        union_sv(self.som_vcfs[:3], read_min_len, opt, file_handler=f)
+        f.close()
+
         for cat in categories:
-            filtered_vcfs = [ str(self.work_dir / Path(f"{caller}_{cat}_filtered.vcf")) for caller in callers ]
+            filtered_vcfs = [ str(self.work_dir / Path(f"{caller}_{cat}_{opt.read_min_count}_filtered.vcf")) for caller in callers ]
 
             opt.print_sv = True
             f = open(self.work_dir / Path(f"{cat}_union.msv"), 'w')
@@ -969,6 +935,7 @@ class MinisvReads:
             f = open(self.work_dir / Path(f"{cat}_union_dedup.msv"), 'w')
             insilico_truth(str(self.work_dir / Path(f"{cat}_union.msv")), f)
             f.close()
+
 
     def save_timings(self, tsv_path=None):
         """Save collected timings to a TSV file"""
@@ -995,4 +962,3 @@ class MinisvReads:
         print(f"   Highest memory used: {overall_max_mem:.1f} MB")
 
 ## new SV filter from bam -> fastq reads -> gsv
-

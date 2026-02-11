@@ -1,0 +1,45 @@
+#!/bin/bash -ex
+
+test1() {
+    export PYTHONPATH=/hlilab/alvin/pangenome_sv_benchmarking/minisv.py/minimap2/:${PYTHONPATH}
+
+    #minisv denovo-filterasm ../1a.alignment_sv_tools/output/severus_latest/COLO829_hifi1/grch38_cutoff2_read_ids/somatic_SVs/severus_somatic.vcf ../1a.alignment_sv_tools/output/savana13/COLO829_hifi1/grch38/grch38_T_tag.classified.somatic.vcf  ../1a.alignment_sv_tools/output/nanomonsv_latest/COLO829_hifi1/grch38_tnpair.vcf  ../1a.alignment_sv_tools/output/severus_latest/COLO829_hifi1/grch38_cutoff2_read_ids/read_ids.csv  ../1a.alignment_sv_tools/output/savana13/COLO829_hifi1/grch38/grch38_T_tag.sv_breakpoints_read_support.tsv  ../1a.alignment_sv_tools/output/nanomonsv_latest/COLO829_hifi1/T/grch38_parse.nanomonsv.supporting_read.txt  ../1a.alignment_sv_tools/output/align/COLO829_hifi1/T/grch38.cram ../1a.alignment_sv_tools/grch38.fa ../5.assembly_evaluation/COLO829BL.asm.bp.hap1.fa.gz ../5.assembly_evaluation/COLO829BL.asm.bp.hap2.fa.gz /hlilab/hli/minigraph/HPRC-r2/CHM13-464.gfa.gz COLO829_hifi1_all_filtered
+
+    #minisv denovo-filterasm -b ~/data/pangenome_sv_benchmarking/minisv/data/hs38.reg.bed ../1a.alignment_sv_tools/output/severus_latest/COLO829_hifi1/grch38_cutoff2_read_ids/somatic_SVs/severus_somatic.vcf ../1a.alignment_sv_tools/output/savana13/COLO829_hifi1/grch38/grch38_T_tag.classified.somatic.vcf  ../1a.alignment_sv_tools/output/nanomonsv_latest/COLO829_hifi1/grch38_tnpair.vcf  ../1a.alignment_sv_tools/output/severus_latest/COLO829_hifi1/grch38_cutoff2_read_ids/read_ids.csv  ../1a.alignment_sv_tools/output/savana13/COLO829_hifi1/grch38/grch38_T_tag.sv_breakpoints_read_support.tsv  ../1a.alignment_sv_tools/output/nanomonsv_latest/COLO829_hifi1/T/grch38_parse.nanomonsv.supporting_read.txt  ../1a.alignment_sv_tools/output/align/COLO829_hifi1/T/grch38.cram ../1a.alignment_sv_tools/grch38.fa ../5.assembly_evaluation/COLO829BL.asm.bp.hap1.fa.gz ../5.assembly_evaluation/COLO829BL.asm.bp.hap2.fa.gz /hlilab/hli/minigraph/HPRC-r2/CHM13-464.gfa.gz COLO829_hifi1_all_filtered_whole1
+
+    minisv snfpair -n 2 -t 1 ../1a.alignment_sv_tools/output/sniffles_latest/COLO829_hifi1/grch38_multi.vcf.gz  > test_snf2.vcf
+
+    minisv sv-cross-ref-filter --maskb /hlilab/alvin/pangenome_sv_benchmarking/minisv/data/hg38.cen-mask.bed --mm2 ../1a.alignment_sv_tools/minimap2/minimap2 --mg ../1a.alignment_sv_tools/minigraph/minigraph -b ~/data/pangenome_sv_benchmarking/minisv/data/hs38.reg.bed --vcf ../1a.alignment_sv_tools/output/severus_latest/COLO829_hifi1/grch38_cutoff2_read_ids/somatic_SVs/severus_somatic.vcf ../1a.alignment_sv_tools/output/savana13/COLO829_hifi1/grch38/grch38_T_tag.classified.somatic.vcf  ../1a.alignment_sv_tools/output/nanomonsv_latest/COLO829_hifi1/grch38_tnpair.vcf test_snf2.vcf --readid_tsv ../1a.alignment_sv_tools/output/severus_latest/COLO829_hifi1/grch38_cutoff2_read_ids/read_ids.csv  ../1a.alignment_sv_tools/output/savana13/COLO829_hifi1/grch38/grch38_T_tag.sv_breakpoints_read_support.tsv  ../1a.alignment_sv_tools/output/nanomonsv_latest/COLO829_hifi1/T/grch38_parse.nanomonsv.supporting_read.txt test_snf2.vcf  ../1a.alignment_sv_tools/output/align/COLO829_hifi1/T/grch38.cram ../1a.alignment_sv_tools/grch38.fa ../5.assembly_evaluation/COLO829BL.asm.bp.hap1.fa.gz ../5.assembly_evaluation/COLO829BL.asm.bp.hap2.fa.gz /hlilab/hli/minigraph/HPRC-r2/CHM13-464.gfa.gz COLO829_hifi1_all_filtered_whole_preset1_wt_snf2
+
+    #minisv denovo-filterasm ../1a.alignment_sv_tools/output/savana13/COLO829_hifi1/grch38/grch38_T_tag.classified.somatic.vcf  ../1a.alignment_sv_tools/output/savana13/COLO829_hifi1/grch38/grch38_T_tag.sv_breakpoints_read_support.tsv ../1a.alignment_sv_tools/output/align/COLO829_hifi1/T/grch38.cram ../1a.alignment_sv_tools/grch38.fa ../5.assembly_evaluation/COLO829BL.asm.bp.hap1.fa.gz ../5.assembly_evaluation/COLO829BL.asm.bp.hap2.fa.gz /hlilab/hli/minigraph/HPRC-r2/CHM13-464.gfa.gz savana_filter_workdir_all
+
+    #minisv denovo-filterasm ../1a.alignment_sv_tools/output/savana13/HCC1395_hifi1/grch38/grch38_T_tag.classified.somatic.vcf  ../1a.alignment_sv_tools/output/savana13/HCC1395_hifi1/grch38/grch38_T_tag.sv_breakpoints_read_support.tsv ../1a.alignment_sv_tools/output/align/HCC1395_hifi1/T/grch38.cram ../1a.alignment_sv_tools/grch38.fa ../5.assembly_evaluation/HCC1395BL.asm.bp.hap1.fa.gz ../5.assembly_evaluation/HCC1395BL.asm.bp.hap2.fa.gz /hlilab/hli/minigraph/HPRC-r2/CHM13-464.gfa.gz  HCC1395_savana_filter_workdir_all
+
+
+    ##TUMOUR_SUPPORTING_READS
+    #minisv filterasm -c 2 -a -b ~/data/pangenome_sv_benchmarking/minisv/data/hs38.reg.bed ../../1a.alignment_sv_tools/output/savana12/COLO829_hifi1/grch38/grch38_T_tag.sv_breakpoints_read_support.tsv /hlilab/hli/gafcall/pair_v2/COLO829T.self.Q0.gsv.gz  test.out ../../1a.alignment_sv_tools/output/savana12/COLO829_hifi1/grch38/grch38_T_tag.classified.somatic.vcf 
+    
+    #minisv filterasm -c 2 -a -b ~/data/pangenome_sv_benchmarking/minisv/data/hs38.reg.bed ../../1a.alignment_sv_tools/output/severus/HCC1937_hifi1/grch38_cutoff2_read_ids/read_ids.csv /hlilab/hli/gafcall/pair_v2/HCC1937T.self.Q0.gsv.gz  test.out ../../1a.alignment_sv_tools/output/severus/HCC1937_hifi1/grch38_cutoff2_read_ids/somatic_SVs/severus_somatic.vcf | wc -l
+    #minisv filterasm -c 2 -a -b ~/data/pangenome_sv_benchmarking/minisv/data/hs38.reg.bed ../../1a.alignment_sv_tools/output/savana12/HCC1937_hifi1/grch38/grch38_T_tag.sv_breakpoints_read_support.tsv /hlilab/hli/gafcall/pair_v2/HCC1937T.self.Q0.gsv.gz  test.out ../../1a.alignment_sv_tools/output/savana12/HCC1937_hifi1/grch38/grch38_T_tag.classified.somatic.vcf | wc -l
+    
+    #minisv filterasm -c 2 -a -b ~/data/pangenome_sv_benchmarking/minisv/data/hs38.reg.bed ../../1a.alignment_sv_tools/output/nanomonsv/COLO829_hifi1/T/grch38_parse.nanomonsv.supporting_read.txt /hlilab/hli/gafcall/pair_v2/COLO829T.self.Q0.gsv.gz test.out ../../1a.alignment_sv_tools/output/nanomonsv/COLO829_hifi1/grch38_tnpair.vcf
+    
+    #minisv filterasm -c 2 -a -b ~/data/pangenome_sv_benchmarking/minisv/data/hs38.reg.bed ../../1a.alignment_sv_tools/output/nanomonsv/COLO829_hifi1/T/grch38_parse.nanomonsv.supporting_read.txt /hlilab/hli/gafcall/pair_v2/COLO829T.self.Q0.gsv.gz test.out ../../1a.alignment_sv_tools/output/nanomonsv/COLO829_hifi1/grch38_tnpair.vcf
+    
+    #minisv filterasm -c 2 -a -b ~/data/pangenome_sv_benchmarking/minisv/data/hs38.reg.bed ../../1a.alignment_sv_tools/output/sniffles/COLO829_hifi1/grch38_multi.vcf.gz /hlilab/hli/gafcall/pair_v2/COLO829T.self.Q0.gsv.gz test.out ../../1a.alignment_sv_tools/output/sniffles/COLO829_hifi1/grch38_multi.vcf.gz
+    
+    #minisv snfpair -t 1 -n 2 ../../1a.alignment_sv_tools/output/sniffles/COLO829_hifi1/grch38_multi.vcf.gz > test1.vcf
+    #/hlilab/alvin/miniconda3/bin/k8 ../../minisv/minisv.js snfpair -t 1 -n 2 ../../1a.alignment_sv_tools/output/sniffles/COLO829_hifi1/grch38_multi.vcf.gz > test2.vcf
+    #diff test1 test2 | wc -l
+    #minisv filterasm -c 2 -a -b ~/data/pangenome_sv_benchmarking/minisv/data/hs38.reg.bed test1.vcf /hlilab/hli/gafcall/pair_v2/COLO829T.self.Q0.gsv.gz test.out test1.vcf > test1.filterasm
+    
+    #minisv filterasm -c 2 -a -b ~/data/pangenome_sv_benchmarking/minisv/data/hs38.reg.bed ../../1a.alignment_sv_tools/output/savana12/HCC1937_hifi1/grch38/grch38_T_tag.sv_breakpoints_read_support.tsv /hlilab/hli/gafcall/pair_v2/HCC1937T.self.Q0.gsv.gz  test.out ../../1a.alignment_sv_tools/output/savana12/HCC1937_hifi1/grch38/grch38_T_tag.classified.somatic.vcf | wc -l
+}
+
+
+main() {
+    test1
+}
+
+main
+

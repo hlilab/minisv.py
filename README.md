@@ -66,6 +66,7 @@ matched normal.
 - [Generic filtering for other caller](#filter)
 - [Ensembling filtered caller results](#ensemble)
 - [Comparing SVs](#compare)
+- [Filtering interface](#filtering)
 - [Limitations](#limit)
 
 
@@ -384,6 +385,34 @@ minisv advunion -u -p -b ~/data/pangenome_sv_benchmarking/minisv/data/hs38.reg.b
 Minisv seamlessly parses the VCF format and the minisv format. It has been
 tested with Severus, Sniffles2, cuteSV, SAVANA, SVision-Pro, nanomonsv, SvABA
 and GRIPSS.
+
+
+## <a name="filtering"></a>Filtering interface alone
+
+We first extracted the somatic SVs from the Sniffles2,
+
+```sh
+minisv snfpair -n 2 -t 1 grch38_multi.vcf.gz  > snf2.vcf
+```
+
+Then, given the GRCh38-based vcf and their corresponding readnames files from the Severus, SAVANA, nanomonsv, Sniffles2, the filtering pipeline sequentially extracts somatic reads from the bam, identify SV signal from realignment to de novo assembly[hifiasm][hifiasm] and pangenome[mg-zenodo][mg-zenodo], and generate consensus SV calls from the Severus, SAVANA, nanomonsv after filtering by multiple references. 
+
+```sh
+minisv sv-cross-ref-filter --maskb minisv/data/hg38.cen-mask.bed  --mm2 minimap2_path --mg minigraph_path -b minisv/data/hs38.reg.bed --vcf severus_somatic.vcf savana_grch38_T_tag.classified.somatic.vcf nanomonsv_grch38_tnpair.vcf snf2.vcf --readid_tsv severus_read_ids.csv savana_grch38_T_tag.sv_breakpoints_read_support.tsv nanomonsv_grch38_parse.nanomonsv.supporting_read.txt snf2.vcf grch38.cram grch38.fa asm.bp.hap1.fa.gz asm.bp.hap2.fa.gz CHM13-464.gfa.gz output_folder
+```
+
+A typical output folder contains the following output files, the `l+g+s_union_dedup.msv` is the final filtered consensus SV callset, the rest of the intermediate files includes the filtered SV callset and filtering statistics for each caller at different cutoffs, extracted reads(`som_reads.fq.gz`) and intermediate SV signals (`gsv.gz`), realignment results (`paf.gz`, `gaf.gz`):
+
+```sh
+denovo_aligned.gaf.gz  l+g_union_dedup.msv    minisv_timings.tsv               nanomonsv_l+g+s_3_filtered.vcf   nanomonsv_l+s_4_filtered.vcf   savana_l+g_5_filtered.stat    savana_l+s_3_filtered.stat   severus_l+g_4_filtered.stat    severus_l+g+s_5_filtered.stat  sniffles2_l+g_3_filtered.stat    sniffles2_l+g+s_4_filtered.stat  sniffles2_l+s_5_filtered.stat
+denovo_aligned.paf.gz  l+g_union.msv          nanomonsv_l+g_3_filtered.stat    nanomonsv_l+g+s_4_filtered.stat  nanomonsv_l+s_5_filtered.stat  savana_l+g_5_filtered.vcf     savana_l+s_3_filtered.vcf    severus_l+g_4_filtered.vcf     severus_l+g+s_5_filtered.vcf   sniffles2_l+g_3_filtered.vcf     sniffles2_l+g+s_4_filtered.vcf   sniffles2_l+s_5_filtered.vcf
+denovo.gsv.gz          l+g_union_stat.msv     nanomonsv_l+g_3_filtered.vcf     nanomonsv_l+g+s_4_filtered.vcf   nanomonsv_l+s_5_filtered.vcf   savana_l+g+s_3_filtered.stat  savana_l+s_4_filtered.stat   severus_l+g_5_filtered.stat    severus_l+s_3_filtered.stat    sniffles2_l+g_4_filtered.stat    sniffles2_l+g+s_5_filtered.stat  som_reads.fq.gz
+graph.gsv.gz           l_only_union.msv       nanomonsv_l+g_4_filtered.stat    nanomonsv_l+g+s_5_filtered.stat  readid.names                   savana_l+g+s_3_filtered.vcf   savana_l+s_4_filtered.vcf    severus_l+g_5_filtered.vcf     severus_l+s_3_filtered.vcf     sniffles2_l+g_4_filtered.vcf     sniffles2_l+g+s_5_filtered.vcf
+gs.gsv.gz              l_only_union_stat.msv  nanomonsv_l+g_4_filtered.vcf     nanomonsv_l+g+s_5_filtered.vcf   savana_l+g_3_filtered.stat     savana_l+g+s_4_filtered.stat  savana_l+s_5_filtered.stat   severus_l+g+s_3_filtered.stat  severus_l+s_4_filtered.stat    sniffles2_l+g_5_filtered.stat    sniffles2_l+s_3_filtered.stat
+l+g+s_union_dedup.msv  l+s_union_dedup.msv    nanomonsv_l+g_5_filtered.stat    nanomonsv_l+s_3_filtered.stat    savana_l+g_3_filtered.vcf      savana_l+g+s_4_filtered.vcf   savana_l+s_5_filtered.vcf    severus_l+g+s_3_filtered.vcf   severus_l+s_4_filtered.vcf     sniffles2_l+g_5_filtered.vcf     sniffles2_l+s_3_filtered.vcf
+l+g+s_union.msv        l+s_union.msv          nanomonsv_l+g_5_filtered.vcf     nanomonsv_l+s_3_filtered.vcf     savana_l+g_4_filtered.stat     savana_l+g+s_5_filtered.stat  severus_l+g_3_filtered.stat  severus_l+g+s_4_filtered.stat  severus_l+s_5_filtered.stat    sniffles2_l+g+s_3_filtered.stat  sniffles2_l+s_4_filtered.stat
+l+g+s_union_stat.msv   l+s_union_stat.msv     nanomonsv_l+g+s_3_filtered.stat  nanomonsv_l+s_4_filtered.stat    savana_l+g_4_filtered.vcf      savana_l+g+s_5_filtered.vcf   severus_l+g_3_filtered.vcf   severus_l+g+s_4_filtered.vcf   severus_l+s_5_filtered.vcf     sniffles2_l+g+s_3_filtered.vcf   sniffles2_l+s_4_filtered.vcf
+```
 
 ## <a name="limit"></a>Limitations
 
